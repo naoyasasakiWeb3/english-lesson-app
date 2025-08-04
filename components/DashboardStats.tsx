@@ -4,7 +4,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { ThemedText } from './ThemedText';
-import AnimatedCard from './modern/AnimatedCard';
+import ModernCard from './layout/ModernCard';
 
 interface Props {
   stats: DashboardData['todayStats'];
@@ -23,7 +23,7 @@ export default function DashboardStats({ stats, goals }: Props) {
       
       <View style={styles.statsGrid}>
         <Animated.View entering={FadeInDown.delay(200)} style={styles.statCardWrapper}>
-          <AnimatedCard gradientColors={ModernColors.gradients.primaryBlue as [string, string, ...string[]]}>
+          <ModernCard variant="primary" glassEffect={true}>
             <View style={styles.modernStatCard}>
               <View style={styles.progressContainer}>
                 <View style={styles.progressRing}>
@@ -37,11 +37,11 @@ export default function DashboardStats({ stats, goals }: Props) {
               <ThemedText style={styles.statValue}>{stats.studyTime}min</ThemedText>
               <ThemedText style={styles.statLabel}>of {goals.dailyStudyTimeMinutes}min goal</ThemedText>
             </View>
-          </AnimatedCard>
+          </ModernCard>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(300)} style={styles.statCardWrapper}>
-          <AnimatedCard gradientColors={ModernColors.gradients.success as [string, string, ...string[]]}>
+          <ModernCard variant="success">
             <View style={styles.modernStatCard}>
               <View style={styles.progressContainer}>
                 <View style={styles.progressRing}>
@@ -53,33 +53,27 @@ export default function DashboardStats({ stats, goals }: Props) {
                 <ThemedText style={styles.progressText}>{Math.round(wordsProgress)}%</ThemedText>
               </View>
               <ThemedText style={styles.statValue}>{stats.wordsStudied}</ThemedText>
-              <ThemedText style={styles.statLabel}>words learned</ThemedText>
+              <ThemedText style={styles.statLabel}>of {goals.dailyWordCount} words</ThemedText>
             </View>
-          </AnimatedCard>
+          </ModernCard>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(400)} style={styles.statCardWrapper}>
-          <AnimatedCard gradientColors={ModernColors.gradients.warning as [string, string, ...string[]]}>
+          <ModernCard variant="warning">
             <View style={styles.modernStatCard}>
-              <View style={styles.iconContainer}>
-                <ThemedText style={styles.statIcon}>🎯</ThemedText>
-              </View>
-              <ThemedText style={styles.statValue}>{stats.accuracy}%</ThemedText>
-              <ThemedText style={styles.statLabel}>accuracy</ThemedText>
+              <ThemedText style={styles.statValue}>{stats.streak}</ThemedText>
+              <ThemedText style={styles.statLabel}>Day Streak</ThemedText>
             </View>
-          </AnimatedCard>
+          </ModernCard>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(500)} style={styles.statCardWrapper}>
-          <AnimatedCard gradientColors={ModernColors.gradients.primaryPurple as [string, string, ...string[]]}>
+          <ModernCard variant="secondary">
             <View style={styles.modernStatCard}>
-              <View style={styles.iconContainer}>
-                <ThemedText style={styles.statIcon}>🔥</ThemedText>
-              </View>
-              <ThemedText style={styles.statValue}>{stats.streak}</ThemedText>
-              <ThemedText style={styles.statLabel}>day streak</ThemedText>
+              <ThemedText style={styles.statValue}>{stats.accuracy}%</ThemedText>
+              <ThemedText style={styles.statLabel}>Accuracy</ThemedText>
             </View>
-          </AnimatedCard>
+          </ModernCard>
         </Animated.View>
       </View>
     </View>

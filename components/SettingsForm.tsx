@@ -1,23 +1,23 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   StyleSheet, 
   View, 
-  TouchableOpacity, 
   Switch, 
-  Alert,
-  ScrollView 
+  Alert
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useForm, Controller } from 'react-hook-form';
 import { ThemedText } from './ThemedText';
-import { ThemedView } from './ThemedView';
+import ModernCard from './layout/ModernCard';
+import ModernButton from './modern/ModernButton';
 import { useAppStore } from '@/store/useAppStore';
 import { useAudio } from '@/hooks/useAudio';
 import { LearningGoals, DifficultyLevel } from '@/types';
+import { Spacing } from '@/constants/ModernColors';
 
 export default function SettingsForm() {
   const { userSettings, setUserSettings } = useAppStore();
   const { settings: audioSettings, updateSettings: updateAudioSettings, speakWord } = useAudio();
-  // const [showTimeSelector, setShowTimeSelector] = useState(false);
 
   const { control, handleSubmit } = useForm<LearningGoals>({
     defaultValues: userSettings,
@@ -39,482 +39,359 @@ export default function SettingsForm() {
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   return (
-    <ScrollView style={styles.container}>
-      <ThemedView style={styles.section}>
-        <ThemedText type="subtitle" style={styles.sectionTitle}>Learning Goals</ThemedText>
-        
-        {/* Daily Study Time */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Daily Study Time</ThemedText>
-          <Controller
-            control={control}
-            name="dailyStudyTimeMinutes"
-            render={({ field: { value, onChange } }) => (
-              <View style={styles.optionGrid}>
-                {studyTimeOptions.map((time) => (
-                  <TouchableOpacity
-                    key={time}
-                    style={[
-                      styles.optionButton,
-                      value === time && styles.optionButtonSelected
-                    ]}
-                    onPress={() => onChange(time)}
-                  >
-                    <ThemedText 
-                      style={[
-                        styles.optionText,
-                        value === time && styles.optionTextSelected
-                      ]}
-                    >
-                      {time}min
-                    </ThemedText>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          />
-        </View>
-
-        {/* Daily Word Count */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Daily Word Count</ThemedText>
-          <Controller
-            control={control}
-            name="dailyWordCount"
-            render={({ field: { value, onChange } }) => (
-              <View style={styles.optionGrid}>
-                {wordCountOptions.map((count) => (
-                  <TouchableOpacity
-                    key={count}
-                    style={[
-                      styles.optionButton,
-                      value === count && styles.optionButtonSelected
-                    ]}
-                    onPress={() => onChange(count)}
-                  >
-                    <ThemedText 
-                      style={[
-                        styles.optionText,
-                        value === count && styles.optionTextSelected
-                      ]}
-                    >
-                      {count}
-                    </ThemedText>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          />
-        </View>
-
-        {/* Difficulty Level */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Difficulty Level</ThemedText>
-          <Controller
-            control={control}
-            name="difficultyLevel"
-            render={({ field: { value, onChange } }) => (
-              <View style={styles.difficultyContainer}>
-                {difficultyOptions.map((option) => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.difficultyButton,
-                      value === option.value && styles.difficultyButtonSelected
-                    ]}
-                    onPress={() => onChange(option.value)}
-                  >
-                    <ThemedText 
-                      style={[
-                        styles.difficultyText,
-                        value === option.value && styles.difficultyTextSelected
-                      ]}
-                    >
-                      {option.label}
-                    </ThemedText>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          />
-        </View>
-      </ThemedView>
-
-      <ThemedView style={styles.section}>
-        <ThemedText type="subtitle" style={styles.sectionTitle}>Schedule</ThemedText>
-        
-        {/* Learning Days */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Learning Days</ThemedText>
-          <Controller
-            control={control}
-            name="learningDays"
-            render={({ field: { value, onChange } }) => (
-              <View style={styles.dayContainer}>
-                {dayNames.map((day, index) => (
-                  <View key={day} style={styles.dayRow}>
-                    <ThemedText style={styles.dayLabel}>{day}</ThemedText>
-                    <Switch
-                      value={value[index]}
-                      onValueChange={(enabled) => {
-                        const newDays = [...value];
-                        newDays[index] = enabled;
-                        onChange(newDays);
-                      }}
-                      trackColor={{ false: '#767577', true: '#4CAF50' }}
-                      thumbColor={value[index] ? '#ffffff' : '#f4f3f4'}
-                    />
-                  </View>
-                ))}
-              </View>
-            )}
-          />
-        </View>
-
-        {/* Reminder Time */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Daily Reminder</ThemedText>
-          <Controller
-            control={control}
-            name="reminderTime"
-            render={({ field: { value, onChange } }) => (
-              <TouchableOpacity
-                style={styles.timeButton}
-                onPress={() => Alert.alert('Time Picker', 'Time picker functionality would be implemented here')}
-              >
-                <ThemedText style={styles.timeText}>
-                  {value || 'Set Reminder Time'}
-                </ThemedText>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      </ThemedView>
-
-      <ThemedView style={styles.section}>
-        <ThemedText type="subtitle" style={styles.sectionTitle}>Audio Settings</ThemedText>
-        
-        {/* Accent Selection */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Accent</ThemedText>
-          <View style={styles.accentContainer}>
-            {[
-              { value: 'us' as const, label: 'American English' },
-              { value: 'uk' as const, label: 'British English' }
-            ].map((accent) => (
-              <TouchableOpacity
-                key={accent.value}
-                style={[
-                  styles.accentButton,
-                  audioSettings.accent === accent.value && styles.accentButtonSelected
-                ]}
-                onPress={() => updateAudioSettings({ accent: accent.value })}
-              >
-                <ThemedText 
-                  style={[
-                    styles.accentText,
-                    audioSettings.accent === accent.value && styles.accentTextSelected
-                  ]}
-                >
-                  {accent.label}
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Speech Speed */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Speech Speed: {audioSettings.speed}x</ThemedText>
-          <View style={styles.speedContainer}>
-            {[0.5, 0.75, 1.0, 1.25, 1.5].map((speed) => (
-              <TouchableOpacity
-                key={speed}
-                style={[
-                  styles.speedButton,
-                  audioSettings.speed === speed && styles.speedButtonSelected
-                ]}
-                onPress={async () => {
-                  await updateAudioSettings({ speed });
-                  await speakWord('Beautiful', { speed });
-                }}
-              >
-                <ThemedText 
-                  style={[
-                    styles.speedText,
-                    audioSettings.speed === speed && styles.speedTextSelected
-                  ]}
-                >
-                  {speed}x
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Auto-play Setting */}
-        <View style={styles.setting}>
-          <View style={styles.switchRow}>
-            <ThemedText style={styles.label}>Auto-play Pronunciation</ThemedText>
-            <Switch
-              value={audioSettings.autoPlay}
-              onValueChange={(value) => updateAudioSettings({ autoPlay: value })}
-              trackColor={{ false: '#767577', true: '#4CAF50' }}
-              thumbColor={audioSettings.autoPlay ? '#ffffff' : '#f4f3f4'}
+    <View style={styles.container}>
+      {/* Learning Goals Section */}
+      <Animated.View entering={FadeInDown.delay(100)}>
+        <ModernCard variant="primary" delay={0}>
+          <ThemedText style={styles.sectionTitle}>🎯 Learning Goals</ThemedText>
+          
+          {/* Daily Study Time */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Daily Study Time</ThemedText>
+            <Controller
+              control={control}
+              name="dailyStudyTimeMinutes"
+              render={({ field: { value, onChange } }) => (
+                <View style={styles.optionGrid}>
+                  {studyTimeOptions.map((time, index) => (
+                    <Animated.View key={time} entering={FadeInDown.delay(200 + index * 50)}>
+                      <ModernButton
+                        title={`${time}min`}
+                        onPress={() => onChange(time)}
+                        variant={value === time ? 'success' : 'neutral'}
+                        size="sm"
+                        style={styles.optionButton}
+                      />
+                    </Animated.View>
+                  ))}
+                </View>
+              )}
             />
           </View>
-          <ThemedText style={styles.settingDescription}>
-            Automatically play word pronunciation when showing new questions
-          </ThemedText>
-        </View>
 
-        {/* Volume Setting */}
-        <View style={styles.setting}>
-          <ThemedText style={styles.label}>Volume: {Math.round(audioSettings.volume * 100)}%</ThemedText>
-          <View style={styles.volumeContainer}>
-            {[0.3, 0.5, 0.7, 1.0].map((volume) => (
-              <TouchableOpacity
-                key={volume}
-                style={[
-                  styles.volumeButton,
-                  audioSettings.volume === volume && styles.volumeButtonSelected
-                ]}
-                onPress={() => updateAudioSettings({ volume })}
-              >
-                <ThemedText 
-                  style={[
-                    styles.volumeText,
-                    audioSettings.volume === volume && styles.volumeTextSelected
-                  ]}
-                >
-                  {Math.round(volume * 100)}%
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
+          {/* Daily Word Count */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Daily Word Count</ThemedText>
+            <Controller
+              control={control}
+              name="dailyWordCount"
+              render={({ field: { value, onChange } }) => (
+                <View style={styles.optionGrid}>
+                  {wordCountOptions.map((count, index) => (
+                    <Animated.View key={count} entering={FadeInDown.delay(300 + index * 50)}>
+                      <ModernButton
+                        title={count.toString()}
+                        onPress={() => onChange(count)}
+                        variant={value === count ? 'success' : 'neutral'}
+                        size="sm"
+                        style={styles.optionButton}
+                      />
+                    </Animated.View>
+                  ))}
+                </View>
+              )}
+            />
           </View>
-        </View>
 
-        {/* Test Audio */}
-        <TouchableOpacity
-          style={styles.testAudioButton}
-          onPress={() => speakWord('Hello, this is a pronunciation test')}
-        >
-          <ThemedText style={styles.testAudioText}>🔊 Test Audio Settings</ThemedText>
-        </TouchableOpacity>
-      </ThemedView>
+          {/* Difficulty Level */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Difficulty Level</ThemedText>
+            <Controller
+              control={control}
+              name="difficultyLevel"
+              render={({ field: { value, onChange } }) => (
+                <View style={styles.difficultyContainer}>
+                  {difficultyOptions.map((option, index) => (
+                    <Animated.View key={option.value} entering={FadeInDown.delay(400 + index * 100)}>
+                      <ModernButton
+                        title={option.label}
+                        onPress={() => onChange(option.value)}
+                        variant={value === option.value ? 'primary' : 'neutral'}
+                        size="md"
+                        style={styles.difficultyButton}
+                      />
+                    </Animated.View>
+                  ))}
+                </View>
+              )}
+            />
+          </View>
+        </ModernCard>
+      </Animated.View>
 
-      <ThemedView style={styles.section}>
-        <TouchableOpacity
-          style={styles.saveButton}
+      {/* Schedule Section */}
+      <Animated.View entering={FadeInDown.delay(200)}>
+        <ModernCard variant="secondary" delay={0}>
+          <ThemedText style={styles.sectionTitle}>📅 Schedule</ThemedText>
+          
+          {/* Learning Days */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Learning Days</ThemedText>
+            <Controller
+              control={control}
+              name="learningDays"
+              render={({ field: { value, onChange } }) => (
+                <View style={styles.dayContainer}>
+                  {dayNames.map((day, index) => (
+                    <Animated.View key={day} entering={FadeInDown.delay(500 + index * 100)}>
+                      <ModernCard variant="glass" style={styles.dayCard}>
+                        <View style={styles.dayRow}>
+                          <ThemedText style={styles.dayLabel}>{day}</ThemedText>
+                          <Switch
+                            value={value[index]}
+                            onValueChange={(enabled) => {
+                              const newDays = [...value];
+                              newDays[index] = enabled;
+                              onChange(newDays);
+                            }}
+                            trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(16,185,129,0.8)' }}
+                            thumbColor={value[index] ? '#ffffff' : 'rgba(255,255,255,0.8)'}
+                          />
+                        </View>
+                      </ModernCard>
+                    </Animated.View>
+                  ))}
+                </View>
+              )}
+            />
+          </View>
+
+          {/* Reminder Time */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Daily Reminder</ThemedText>
+            <Controller
+              control={control}
+              name="reminderTime"
+              render={({ field: { value } }) => (
+                <ModernButton
+                  title={value || 'Set Reminder Time'}
+                  onPress={() => Alert.alert('Time Picker', 'Time picker functionality would be implemented here')}
+                  variant="warning"
+                  size="md"
+                  icon="⏰"
+                  style={styles.timeButton}
+                />
+              )}
+            />
+          </View>
+        </ModernCard>
+      </Animated.View>
+
+      {/* Audio Settings Section */}
+      <Animated.View entering={FadeInDown.delay(300)}>
+        <ModernCard variant="warning" delay={0}>
+          <ThemedText style={styles.sectionTitle}>🔊 Audio Settings</ThemedText>
+          
+          {/* Accent Selection */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Accent</ThemedText>
+            <View style={styles.accentContainer}>
+              {[
+                { value: 'us' as const, label: 'American English', flag: '🇺🇸' },
+                { value: 'uk' as const, label: 'British English', flag: '🇬🇧' }
+              ].map((accent, index) => (
+                <Animated.View key={accent.value} entering={FadeInDown.delay(600 + index * 100)}>
+                  <ModernButton
+                    title={`${accent.flag} ${accent.label}`}
+                    onPress={() => updateAudioSettings({ accent: accent.value })}
+                    variant={audioSettings.accent === accent.value ? 'success' : 'neutral'}
+                    size="md"
+                    style={styles.accentButton}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+          </View>
+
+          {/* Speech Speed */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Speech Speed: {audioSettings.speed}x</ThemedText>
+            <View style={styles.speedContainer}>
+              {[0.5, 0.75, 1.0, 1.25, 1.5].map((speed, index) => (
+                <Animated.View key={speed} entering={FadeInDown.delay(700 + index * 50)}>
+                  <ModernButton
+                    title={`${speed}x`}
+                    onPress={async () => {
+                      await updateAudioSettings({ speed });
+                      await speakWord('Beautiful', { speed });
+                    }}
+                    variant={audioSettings.speed === speed ? 'primary' : 'neutral'}
+                    size="sm"
+                    style={styles.speedButton}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+          </View>
+
+          {/* Auto-play Setting */}
+          <View style={styles.setting}>
+            <ModernCard variant="glass" style={styles.switchCard}>
+              <View style={styles.switchRow}>
+                <View>
+                  <ThemedText style={styles.switchLabel}>Auto-play Pronunciation</ThemedText>
+                  <ThemedText style={styles.switchDescription}>
+                    Automatically play word pronunciation when showing new questions
+                  </ThemedText>
+                </View>
+                <Switch
+                  value={audioSettings.autoPlay}
+                  onValueChange={(value) => updateAudioSettings({ autoPlay: value })}
+                  trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(16,185,129,0.8)' }}
+                  thumbColor={audioSettings.autoPlay ? '#ffffff' : 'rgba(255,255,255,0.8)'}
+                />
+              </View>
+            </ModernCard>
+          </View>
+
+          {/* Volume Setting */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Volume: {Math.round(audioSettings.volume * 100)}%</ThemedText>
+            <View style={styles.volumeContainer}>
+              {[0.3, 0.5, 0.7, 1.0].map((volume, index) => (
+                <Animated.View key={volume} entering={FadeInDown.delay(800 + index * 50)}>
+                  <ModernButton
+                    title={`${Math.round(volume * 100)}%`}
+                    onPress={() => updateAudioSettings({ volume })}
+                    variant={audioSettings.volume === volume ? 'error' : 'neutral'}
+                    size="sm"
+                    style={styles.volumeButton}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+          </View>
+
+          {/* Test Audio */}
+          <Animated.View entering={FadeInDown.delay(900)}>
+            <ModernButton
+              title="Test Audio Settings"
+              onPress={() => speakWord('Hello, this is a pronunciation test')}
+              variant="secondary"
+              size="lg"
+              icon="🔊"
+              style={styles.testAudioButton}
+            />
+          </Animated.View>
+        </ModernCard>
+      </Animated.View>
+
+      {/* Save Button */}
+      <Animated.View entering={FadeInDown.delay(400)}>
+        <ModernButton
+          title="Save Settings"
           onPress={handleSubmit(onSubmit)}
-        >
-          <ThemedText style={styles.saveButtonText}>Save Settings</ThemedText>
-        </TouchableOpacity>
-      </ThemedView>
-    </ScrollView>
+          variant="success"
+          size="lg"
+          icon="💾"
+          style={styles.saveButton}
+        />
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  section: {
-    marginBottom: 25,
-    padding: 20,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
+    gap: Spacing.lg,
   },
   sectionTitle: {
-    marginBottom: 20,
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: Spacing.lg,
     textAlign: 'center',
   },
   setting: {
-    marginBottom: 25,
+    marginBottom: Spacing.lg,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: Spacing.sm,
+    color: '#ffffff',
   },
   optionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: Spacing.xs,
   },
   optionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
     minWidth: 60,
-    alignItems: 'center',
-  },
-  optionButtonSelected: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  optionText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  optionTextSelected: {
-    color: '#ffffff',
   },
   difficultyContainer: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   difficultyButton: {
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    alignItems: 'center',
-  },
-  difficultyButtonSelected: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  difficultyText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  difficultyTextSelected: {
-    color: '#ffffff',
+    width: '100%',
   },
   dayContainer: {
-    gap: 12,
+    gap: Spacing.xs,
+  },
+  dayCard: {
+    marginVertical: 0,
+    paddingVertical: Spacing.sm,
   },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
   },
   dayLabel: {
     fontSize: 16,
+    color: '#ffffff',
+    fontWeight: '500',
   },
   timeButton: {
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    alignItems: 'center',
+    width: '100%',
   },
-  timeText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  saveButton: {
-    backgroundColor: '#2196F3',
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  // Audio settings styles
   accentContainer: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   accentButton: {
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    alignItems: 'center',
-  },
-  accentButtonSelected: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  accentText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  accentTextSelected: {
-    color: '#ffffff',
+    width: '100%',
   },
   speedContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.xs,
     flexWrap: 'wrap',
   },
   speedButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
     minWidth: 60,
-    alignItems: 'center',
   },
-  speedButtonSelected: {
-    backgroundColor: '#2196F3',
-    borderColor: '#2196F3',
-  },
-  speedText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  speedTextSelected: {
-    color: '#ffffff',
+  switchCard: {
+    marginVertical: 0,
   },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: Spacing.md,
   },
-  settingDescription: {
+  switchLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  switchDescription: {
     fontSize: 14,
-    opacity: 0.7,
+    color: 'rgba(255, 255, 255, 0.8)',
     lineHeight: 18,
+    flex: 1,
   },
   volumeContainer: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.xs,
   },
   volumeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
     minWidth: 60,
-    alignItems: 'center',
-  },
-  volumeButtonSelected: {
-    backgroundColor: '#FF9800',
-    borderColor: '#FF9800',
-  },
-  volumeText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  volumeTextSelected: {
-    color: '#ffffff',
   },
   testAudioButton: {
-    backgroundColor: '#9C27B0',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
+    width: '100%',
   },
-  testAudioText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
+  saveButton: {
+    width: '100%',
   },
 });

@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
-  TouchableOpacity, 
   View, 
   ScrollView,
   Alert 
 } from 'react-native';
+import Animated, { FadeInDown, FadeInLeft, FadeInRight } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { ThemedText } from './ThemedText';
-import { ThemedView } from './ThemedView';
+import ModernCard from './layout/ModernCard';
+import ModernButton from './modern/ModernButton';
 import { useAppStore } from '@/store/useAppStore';
 import { databaseService } from '@/services/database';
 import { Word } from '@/types';
+import { Spacing } from '@/constants/ModernColors';
 
 export default function ReviewSection() {
   const router = useRouter();
@@ -63,7 +65,7 @@ export default function ReviewSection() {
   const handleRemoveBookmark = async (wordId: number) => {
     try {
       await databaseService.toggleBookmark(wordId);
-      await loadReviewData(); // Refresh the data
+      await loadReviewData();
       Alert.alert('Success', 'Bookmark removed');
     } catch (error) {
       Alert.alert('Error', 'Failed to remove bookmark');
@@ -72,174 +74,201 @@ export default function ReviewSection() {
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText>Loading review data...</ThemedText>
-      </ThemedView>
+      <ModernCard variant="neutral" delay={100}>
+        <ThemedText style={styles.loadingText}>Loading review data...</ThemedText>
+      </ModernCard>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
       {/* Bookmarked Words Section */}
-      <ThemedView style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleContainer}>
-            <ThemedText style={styles.sectionEmoji}>⭐</ThemedText>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>
-              Bookmarked Words
-            </ThemedText>
-          </View>
-          <ThemedText style={styles.wordCount}>
-            {bookmarkedWords.length} words
-          </ThemedText>
-        </View>
-
-        {bookmarkedWords.length > 0 ? (
-          <>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.wordsScroll}
-            >
-              {bookmarkedWords.slice(0, 10).map((word) => (
-                <TouchableOpacity
-                  key={word.id}
-                  style={styles.wordCard}
-                  onLongPress={() => handleRemoveBookmark(word.id)}
-                >
-                  <ThemedText style={styles.wordText}>{word.word}</ThemedText>
-                  <ThemedText style={styles.definitionText} numberOfLines={2}>
-                    {word.definition}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.reviewButton, { backgroundColor: '#9C27B0' }]}
-              onPress={() => handleStartReview('bookmarked')}
-            >
-              <ThemedText style={styles.reviewButtonText}>
-                Review Bookmarked Words
+      <Animated.View entering={FadeInDown.delay(100)}>
+        <ModernCard variant="secondary" delay={0}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <ThemedText style={styles.sectionEmoji}>⭐</ThemedText>
+              <ThemedText style={styles.sectionTitle}>
+                Bookmarked Words
               </ThemedText>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.emptyState}>
-            <ThemedText style={styles.emptyStateText}>
-              No bookmarked words yet
-            </ThemedText>
-            <ThemedText style={styles.emptyStateSubtext}>
-              Bookmark words during quizzes to review them later
+            </View>
+            <ThemedText style={styles.wordCount}>
+              {bookmarkedWords.length} words
             </ThemedText>
           </View>
-        )}
-      </ThemedView>
+
+          {bookmarkedWords.length > 0 ? (
+            <>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={styles.wordsScroll}
+                contentContainerStyle={styles.wordsScrollContent}
+              >
+                {bookmarkedWords.slice(0, 10).map((word, index) => (
+                  <Animated.View
+                    key={word.id}
+                    entering={FadeInLeft.delay(200 + index * 100)}
+                  >
+                    <ModernCard
+                      variant="glass"
+                      onPress={() => handleRemoveBookmark(word.id)}
+                      style={styles.wordCard}
+                      glassEffect={true}
+                    >
+                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
+                      <ThemedText style={styles.definitionText} numberOfLines={2}>
+                        {word.definition}
+                      </ThemedText>
+                    </ModernCard>
+                  </Animated.View>
+                ))}
+              </ScrollView>
+
+              <Animated.View entering={FadeInDown.delay(400)}>
+                <ModernButton
+                  title="Review Bookmarked Words"
+                  onPress={() => handleStartReview('bookmarked')}
+                  variant="secondary"
+                  size="lg"
+                  icon="⭐"
+                  style={styles.reviewButton}
+                />
+              </Animated.View>
+            </>
+          ) : (
+            <Animated.View entering={FadeInDown.delay(300)} style={styles.emptyState}>
+              <ThemedText style={styles.emptyStateText}>
+                No bookmarked words yet
+              </ThemedText>
+              <ThemedText style={styles.emptyStateSubtext}>
+                Bookmark words during quizzes to review them later
+              </ThemedText>
+            </Animated.View>
+          )}
+        </ModernCard>
+      </Animated.View>
 
       {/* Weak Words Section */}
-      <ThemedView style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleContainer}>
-            <ThemedText style={styles.sectionEmoji}>🔥</ThemedText>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>
-              Challenging Words
-            </ThemedText>
-          </View>
-          <ThemedText style={styles.wordCount}>
-            {weakWords.length} words
-          </ThemedText>
-        </View>
-
-        {weakWords.length > 0 ? (
-          <>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.wordsScroll}
-            >
-              {weakWords.slice(0, 10).map((word) => (
-                <TouchableOpacity
-                  key={word.id}
-                  style={[styles.wordCard, styles.weakWordCard]}
-                >
-                  <ThemedText style={styles.wordText}>{word.word}</ThemedText>
-                  <ThemedText style={styles.definitionText} numberOfLines={2}>
-                    {word.definition}
-                  </ThemedText>
-                  <View style={styles.difficultyBadge}>
-                    <ThemedText style={styles.difficultyText}>
-                      {word.difficulty === 1 ? 'Easy' : 
-                       word.difficulty === 2 ? 'Medium' : 'Hard'}
-                    </ThemedText>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.reviewButton, { backgroundColor: '#F44336' }]}
-              onPress={() => handleStartReview('weak')}
-            >
-              <ThemedText style={styles.reviewButtonText}>
-                Practice Challenging Words
+      <Animated.View entering={FadeInDown.delay(200)}>
+        <ModernCard variant="error" delay={0}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <ThemedText style={styles.sectionEmoji}>🔥</ThemedText>
+              <ThemedText style={styles.sectionTitle}>
+                Challenging Words
               </ThemedText>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.emptyState}>
-            <ThemedText style={styles.emptyStateText}>
-              No challenging words identified yet
-            </ThemedText>
-            <ThemedText style={styles.emptyStateSubtext}>
-              Keep practicing to identify words that need more work
+            </View>
+            <ThemedText style={styles.wordCount}>
+              {weakWords.length} words
             </ThemedText>
           </View>
-        )}
-      </ThemedView>
+
+          {weakWords.length > 0 ? (
+            <>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={styles.wordsScroll}
+                contentContainerStyle={styles.wordsScrollContent}
+              >
+                {weakWords.slice(0, 10).map((word, index) => (
+                  <Animated.View
+                    key={word.id}
+                    entering={FadeInRight.delay(300 + index * 100)}
+                  >
+                    <ModernCard
+                      variant="glass"
+                      style={styles.wordCard}
+                      glassEffect={true}
+                    >
+                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
+                      <ThemedText style={styles.definitionText} numberOfLines={2}>
+                        {word.definition}
+                      </ThemedText>
+                      <View style={styles.difficultyBadge}>
+                        <ThemedText style={styles.difficultyText}>
+                          {word.difficulty === 1 ? 'Easy' : 
+                           word.difficulty === 2 ? 'Medium' : 'Hard'}
+                        </ThemedText>
+                      </View>
+                    </ModernCard>
+                  </Animated.View>
+                ))}
+              </ScrollView>
+
+              <Animated.View entering={FadeInDown.delay(500)}>
+                <ModernButton
+                  title="Practice Challenging Words"
+                  onPress={() => handleStartReview('weak')}
+                  variant="error"
+                  size="lg"
+                  icon="🔥"
+                  style={styles.reviewButton}
+                />
+              </Animated.View>
+            </>
+          ) : (
+            <Animated.View entering={FadeInDown.delay(400)} style={styles.emptyState}>
+              <ThemedText style={styles.emptyStateText}>
+                No challenging words identified yet
+              </ThemedText>
+              <ThemedText style={styles.emptyStateSubtext}>
+                Keep practicing to identify words that need more work
+              </ThemedText>
+            </Animated.View>
+          )}
+        </ModernCard>
+      </Animated.View>
 
       {/* Quick Actions */}
-      <ThemedView style={styles.section}>
-        <ThemedText type="subtitle" style={styles.sectionTitle}>
-          Quick Review Options
-        </ThemedText>
-        
-        <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={() => router.push('/quiz')}
-          >
-            <ThemedText style={styles.quickActionEmoji}>🎯</ThemedText>
-            <ThemedText style={styles.quickActionText}>Start New Quiz</ThemedText>
-          </TouchableOpacity>
+      <Animated.View entering={FadeInDown.delay(300)}>
+        <ModernCard variant="primary" delay={0}>
+          <ThemedText style={styles.sectionTitle}>
+            Quick Review Options
+          </ThemedText>
           
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={loadReviewData}
-          >
-            <ThemedText style={styles.quickActionEmoji}>🔄</ThemedText>
-            <ThemedText style={styles.quickActionText}>Refresh Data</ThemedText>
-          </TouchableOpacity>
-        </View>
-      </ThemedView>
-    </ScrollView>
+          <View style={styles.quickActions}>
+            <ModernButton
+              title="Start New Quiz"
+              onPress={() => router.push('/quiz')}
+              variant="success"
+              size="md"
+              icon="🎯"
+              style={styles.quickActionButton}
+            />
+            
+            <ModernButton
+              title="Refresh Data"
+              onPress={loadReviewData}
+              variant="neutral"
+              size="md"
+              icon="🔄"
+              style={styles.quickActionButton}
+            />
+          </View>
+        </ModernCard>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    gap: Spacing.lg,
   },
-  section: {
-    marginBottom: 25,
-    padding: 20,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
+  loadingText: {
+    textAlign: 'center',
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '500',
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: Spacing.md,
   },
   sectionTitleContainer: {
     flexDirection: 'row',
@@ -247,115 +276,83 @@ const styles = StyleSheet.create({
   },
   sectionEmoji: {
     fontSize: 24,
-    marginRight: 8,
+    marginRight: Spacing.xs,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   wordCount: {
     fontSize: 14,
-    opacity: 0.7,
+    color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: '600',
   },
   wordsScroll: {
-    marginBottom: 20,
+    marginBottom: Spacing.lg,
+  },
+  wordsScrollContent: {
+    paddingRight: Spacing.md,
   },
   wordCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 16,
-    marginRight: 12,
     width: 150,
     minHeight: 120,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  weakWordCard: {
-    borderLeftWidth: 3,
-    borderLeftColor: '#F44336',
+    marginRight: Spacing.sm,
+    marginVertical: 0,
   },
   wordText: {
     fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontWeight: '700',
+    marginBottom: Spacing.xs,
+    color: '#ffffff',
   },
   definitionText: {
     fontSize: 14,
-    opacity: 0.8,
+    color: 'rgba(255, 255, 255, 0.9)',
     lineHeight: 18,
     flex: 1,
+    fontWeight: '400',
   },
   difficultyBadge: {
-    backgroundColor: '#F44336',
-    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: Spacing.xs,
     paddingVertical: 4,
     borderRadius: 12,
     alignSelf: 'flex-start',
-    marginTop: 8,
+    marginTop: Spacing.xs,
   },
   difficultyText: {
     color: '#ffffff',
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   reviewButton: {
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  reviewButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
+    width: '100%',
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: Spacing.xl,
   },
   emptyStateText: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
-    opacity: 0.7,
+    marginBottom: Spacing.xs,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
   },
   emptyStateSubtext: {
     fontSize: 14,
     textAlign: 'center',
-    opacity: 0.5,
+    color: 'rgba(255, 255, 255, 0.6)',
     lineHeight: 20,
+    fontWeight: '400',
   },
   quickActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
   },
   quickActionButton: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  quickActionEmoji: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  quickActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });

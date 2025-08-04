@@ -1,15 +1,20 @@
 // Modern Color Palette with Gradients and Shadows
 export const ModernColors = {
-  // Primary Gradients
+  // Primary Gradients - Dark Purple Theme
   gradients: {
-    primaryBlue: ['#667eea', '#764ba2'],
-    primaryPurple: ['#f093fb', '#f5576c'],
-    success: ['#4facfe', '#00f2fe'],
-    warning: ['#f6d365', '#fda085'],
-    error: ['#ff9a9e', '#fecfef'],
-    neutral: ['#ffecd2', '#fcb69f'],
-    dark: ['#2c3e50', '#34495e'],
-    light: ['#ffffff', '#f8f9fa'],
+    // Main background - Dark Purple
+    background: ['#1a0b2e', '#2d1b69', '#3b2d7d'],
+    // Card gradients with purple theme
+    primaryBlue: ['#4c1d95', '#5b21b6', '#7c3aed'],
+    primaryPurple: ['#581c87', '#7c2d12', '#a21caf'],
+    success: ['#059669', '#0d9488', '#10b981'],
+    warning: ['#d97706', '#ea580c', '#f59e0b'],
+    error: ['#dc2626', '#e11d48', '#ef4444'],
+    neutral: ['#6b7280', '#9ca3af', '#d1d5db'],
+    dark: ['#111827', '#1f2937', '#374151'],
+    light: ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.2)'],
+    // Glass effects with purple tint
+    glass: ['rgba(139, 92, 246, 0.1)', 'rgba(168, 85, 247, 0.05)'],
   },
 
   // Solid Colors

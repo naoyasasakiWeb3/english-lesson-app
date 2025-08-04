@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, ScrollView, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import { Alert } from 'react-native';
 import { useAppStore } from '@/store/useAppStore';
 import QuizComponent from '@/components/QuizComponent';
 import QuizModeSelector from '@/components/QuizModeSelector';
+import ModernScreenLayout from '@/components/layout/ModernScreenLayout';
 
 export default function QuizScreen() {
   const { currentSession, isLoading, startQuiz, initialize } = useAppStore();
@@ -25,61 +23,27 @@ export default function QuizScreen() {
 
   if (isLoading) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText type="title">Loading...</ThemedText>
-      </ThemedView>
+      <ModernScreenLayout title="Loading...">
+        <></>
+      </ModernScreenLayout>
     );
   }
 
   if (currentSession) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ThemedView style={styles.container}>
-          <QuizComponent />
-        </ThemedView>
-      </SafeAreaView>
-    );
+    return <QuizComponent />;
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.container}>
-      <ThemedView style={styles.content}>
-        <ThemedView style={styles.header}>
-          <ThemedText type="title">Start Learning</ThemedText>
-          <ThemedText style={styles.subtitle}>
-            Choose your learning mode and begin your vocabulary journey
-          </ThemedText>
-        </ThemedView>
-
-        <QuizModeSelector
-          selectedMode={selectedMode}
-          onModeSelect={setSelectedMode}
-          onStartQuiz={() => handleStartQuiz(selectedMode)}
-        />
-        </ThemedView>
-      </ScrollView>
-    </SafeAreaView>
+    <ModernScreenLayout 
+      title="Start Learning"
+      subtitle="Choose your learning mode and begin your vocabulary journey"
+    >
+      <QuizModeSelector
+        selectedMode={selectedMode}
+        onModeSelect={setSelectedMode}
+        onStartQuiz={() => handleStartQuiz(selectedMode)}
+      />
+    </ModernScreenLayout>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  subtitle: {
-    textAlign: 'center',
-    marginTop: 10,
-    opacity: 0.7,
-  },
-});

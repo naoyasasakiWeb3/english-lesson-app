@@ -1,7 +1,9 @@
+import { BorderRadius, ShadowStyles, Spacing } from '@/constants/ModernColors';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown, FadeInLeft, FadeInRight, FadeInUp } from 'react-native-reanimated';
 import { ThemedText } from './ThemedText';
-import { ThemedView } from './ThemedView';
+import ModernCard from './layout/ModernCard';
 
 interface Props {
   level: number;
@@ -16,152 +18,192 @@ export default function LevelProgress({ level, xp }: Props) {
   const progressPercentage = (progressXP / requiredXP) * 100;
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="subtitle" style={styles.title} lightColor="#000000" darkColor="#FFFFFF">Level Progress</ThemedText>
-      
-      <View style={styles.levelInfo}>
-        <View style={styles.levelBadge}>
-          <ThemedText type="title" style={styles.levelNumber}>{level}</ThemedText>
-          <ThemedText style={styles.levelLabel}>Level</ThemedText>
-        </View>
+    <Animated.View entering={FadeInUp.delay(500)}>
+      <ModernCard 
+        variant="warning"
+        pressable={false}
+        style={styles.modernContainer}
+      >
+        <ThemedText type="subtitle" style={styles.modernTitle}>Level Progress</ThemedText>
         
-        <View style={styles.progressInfo}>
-          <ThemedText style={styles.xpText} lightColor="#000000" darkColor="#FFFFFF">{progressXP} / {requiredXP} XP</ThemedText>
-          <View style={styles.progressBar}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { width: `${Math.min(progressPercentage, 100)}%` }
-              ]} 
-            />
-          </View>
-          <ThemedText style={styles.nextLevelText} lightColor="#666666" darkColor="#CCCCCC">
-            {requiredXP - progressXP} XP to Level {level + 1}
-          </ThemedText>
+        <View style={styles.modernLevelInfo}>
+          <Animated.View entering={FadeInLeft.delay(600)} style={styles.modernLevelBadge}>
+            <ModernCard 
+              variant="primary"
+              pressable={false}
+              style={styles.levelBadgeCard}
+            >
+              <ThemedText type="title" style={styles.modernLevelNumber}>{level}</ThemedText>
+              <ThemedText style={styles.modernLevelLabel}>Level</ThemedText>
+            </ModernCard>
+          </Animated.View>
+          
+          <Animated.View entering={FadeInRight.delay(700)} style={styles.modernProgressInfo}>
+            <ThemedText style={styles.modernXpText}>{progressXP} / {requiredXP} XP</ThemedText>
+            <View style={styles.modernProgressBar}>
+              <Animated.View 
+                style={[
+                  styles.modernProgressFill, 
+                  { width: `${Math.min(progressPercentage, 100)}%` }
+                ]} 
+                entering={FadeInDown.delay(800)}
+              />
+            </View>
+            <ThemedText style={styles.modernNextLevelText}>
+              {requiredXP - progressXP} XP to Level {level + 1}
+            </ThemedText>
+          </Animated.View>
         </View>
-      </View>
 
-      <View style={styles.achievements}>
-        <ThemedText style={styles.achievementsTitle} lightColor="#000000" darkColor="#FFFFFF">Recent Achievements</ThemedText>
-        <View style={styles.badgeContainer}>
-          {level >= 2 && (
-            <View style={styles.achievementBadge}>
-              <ThemedText style={styles.badgeEmoji}>🎯</ThemedText>
-              <ThemedText style={styles.badgeText} lightColor="#000000" darkColor="#000000">First Steps</ThemedText>
-            </View>
-          )}
-          {level >= 5 && (
-            <View style={styles.achievementBadge}>
-              <ThemedText style={styles.badgeEmoji}>🔥</ThemedText>
-              <ThemedText style={styles.badgeText} lightColor="#000000" darkColor="#000000">Getting Hot</ThemedText>
-            </View>
-          )}
-          {level >= 10 && (
-            <View style={styles.achievementBadge}>
-              <ThemedText style={styles.badgeEmoji}>⭐</ThemedText>
-              <ThemedText style={styles.badgeText} lightColor="#000000" darkColor="#000000">Star Learner</ThemedText>
-            </View>
-          )}
-        </View>
-      </View>
-    </ThemedView>
+        <Animated.View entering={FadeInUp.delay(900)} style={styles.modernAchievements}>
+          <ThemedText style={styles.modernAchievementsTitle}>Recent Achievements</ThemedText>
+          <View style={styles.modernBadgeContainer}>
+            {level >= 2 && (
+              <Animated.View entering={FadeInDown.delay(1000)}>
+                <ModernCard 
+                  variant="success"
+                  pressable={false}
+                  style={styles.modernAchievementBadge}
+                  glassEffect={true}
+                >
+                  <ThemedText style={styles.modernBadgeEmoji}>🎯</ThemedText>
+                  <ThemedText style={styles.modernBadgeText}>First Steps</ThemedText>
+                </ModernCard>
+              </Animated.View>
+            )}
+            {level >= 5 && (
+              <Animated.View entering={FadeInDown.delay(1100)}>
+                <ModernCard 
+                  variant="error"
+                  pressable={false}
+                  style={styles.modernAchievementBadge}
+                  glassEffect={true}
+                >
+                  <ThemedText style={styles.modernBadgeEmoji}>🔥</ThemedText>
+                  <ThemedText style={styles.modernBadgeText}>Getting Hot</ThemedText>
+                </ModernCard>
+              </Animated.View>
+            )}
+            {level >= 10 && (
+              <Animated.View entering={FadeInDown.delay(1200)}>
+                <ModernCard 
+                  variant="secondary"
+                  pressable={false}
+                  style={styles.modernAchievementBadge}
+                  glassEffect={true}
+                >
+                  <ThemedText style={styles.modernBadgeEmoji}>⭐</ThemedText>
+                  <ThemedText style={styles.modernBadgeText}>Star Learner</ThemedText>
+                </ModernCard>
+              </Animated.View>
+            )}
+          </View>
+        </Animated.View>
+      </ModernCard>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: 25,
-    padding: 20,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
+  modernContainer: {
+    marginBottom: Spacing.lg,
   },
-  title: {
+  modernTitle: {
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: Spacing.lg,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#ffffff',
   },
-  levelInfo: {
+  modernLevelInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: Spacing.lg,
   },
-  levelBadge: {
+  modernLevelBadge: {
+    marginRight: Spacing.lg,
+  },
+  levelBadgeCard: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: '#2196F3',
-    justifyContent: 'center',
+    borderRadius: BorderRadius.full,
     alignItems: 'center',
-    marginRight: 20,
+    justifyContent: 'center',
+    marginVertical: 0,
   },
-  levelNumber: {
+  modernLevelNumber: {
     color: '#ffffff',
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
-  levelLabel: {
-    color: '#ffffff',
+  modernLevelLabel: {
+    color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  progressInfo: {
+  modernProgressInfo: {
     flex: 1,
   },
-  xpText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+  modernXpText: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: Spacing.xs,
+    color: '#ffffff',
   },
-  progressBar: {
+  modernProgressBar: {
     height: 12,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: BorderRadius.full,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: Spacing.xs,
+    ...ShadowStyles.small,
   },
-  progressFill: {
+  modernProgressFill: {
     height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 6,
+    backgroundColor: '#ffffff',
+    borderRadius: BorderRadius.full,
+    ...ShadowStyles.small,
   },
-  nextLevelText: {
+  modernNextLevelText: {
     fontSize: 14,
-    opacity: 0.7,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
   },
-  achievements: {
-    marginTop: 15,
+  modernAchievements: {
+    marginTop: Spacing.md,
   },
-  achievementsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
+  modernAchievementsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: Spacing.sm,
+    color: '#ffffff',
   },
-  badgeContainer: {
+  modernBadgeContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: Spacing.xs,
   },
-  achievementBadge: {
+  modernAchievementBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    marginVertical: 0,
+    minHeight: 36,
   },
-  badgeEmoji: {
-    fontSize: 16,
-    marginRight: 6,
+  modernBadgeEmoji: {
+    fontSize: 18,
+    marginRight: Spacing.xs,
   },
-  badgeText: {
-    fontSize: 12,
+  modernBadgeText: {
+    fontSize: 14,
     fontWeight: '600',
+    color: '#ffffff',
   },
 });

@@ -1,10 +1,7 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
 import { useAppStore } from '@/store/useAppStore';
 import SettingsForm from '@/components/SettingsForm';
+import ModernScreenLayout from '@/components/layout/ModernScreenLayout';
 
 export default function SettingsScreen() {
   const { initialize, isLoading } = useAppStore();
@@ -15,47 +12,19 @@ export default function SettingsScreen() {
 
   if (isLoading) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText type="title">Loading...</ThemedText>
-      </ThemedView>
+      <ModernScreenLayout title="Loading...">
+        <></>
+      </ModernScreenLayout>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.container}>
-        <ThemedView style={styles.content}>
-        <ThemedView style={styles.header}>
-          <ThemedText type="title">Settings</ThemedText>
-          <ThemedText style={styles.subtitle}>
-            Customize your learning experience
-          </ThemedText>
-        </ThemedView>
-
-        <SettingsForm />
-        </ThemedView>
-      </ScrollView>
-    </SafeAreaView>
+    <ModernScreenLayout 
+      title="Settings"
+      subtitle="Customize your learning experience"
+    >
+      <SettingsForm />
+    </ModernScreenLayout>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  subtitle: {
-    textAlign: 'center',
-    marginTop: 10,
-    opacity: 0.7,
-  },
-});

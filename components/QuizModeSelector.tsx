@@ -1,7 +1,10 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from './ThemedText';
-import { ThemedView } from './ThemedView';
+import ModernCard from './layout/ModernCard';
+import ModernButton from './modern/ModernButton';
+import { Spacing } from '@/constants/ModernColors';
 
 interface Props {
   selectedMode: 'random' | 'review' | 'bookmarked' | 'weak';
@@ -16,7 +19,7 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
       title: 'Random Quiz',
       subtitle: 'Mixed difficulty words',
       emoji: '🎲',
-      color: '#4CAF50',
+      variant: 'primary' as const,
       description: 'Practice with a random selection of words based on your difficulty level'
     },
     {
@@ -24,7 +27,7 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
       title: 'Review Mode',
       subtitle: 'Focus on weak words',
       emoji: '📚',
-      color: '#FF9800',
+      variant: 'warning' as const,
       description: 'Review words you\'ve struggled with in the past'
     },
     {
@@ -32,7 +35,7 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
       title: 'Bookmarked',
       subtitle: 'Your saved words',
       emoji: '⭐',
-      color: '#9C27B0',
+      variant: 'secondary' as const,
       description: 'Practice words you\'ve bookmarked for review'
     },
     {
@@ -40,31 +43,31 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
       title: 'Challenge Mode',
       subtitle: 'Difficult words only',
       emoji: '🔥',
-      color: '#F44336',
+      variant: 'error' as const,
       description: 'Focus on your most challenging vocabulary'
     }
   ];
 
+  const selectedModeData = modes.find(m => m.id === selectedMode);
+
   return (
-    <ThemedView style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.modesContainer}>
-        {modes.map((mode) => (
-          <TouchableOpacity
+        {modes.map((mode, index) => (
+          <ModernCard
             key={mode.id}
-            style={[
-              styles.modeCard,
-              selectedMode === mode.id && styles.selectedModeCard,
-              { borderLeftColor: mode.color }
-            ]}
+            variant={selectedMode === mode.id ? mode.variant : 'neutral'}
             onPress={() => onModeSelect(mode.id)}
-            activeOpacity={0.7}
+            style={styles.modeCard}
+            delay={index * 100}
+            glassEffect={selectedMode === mode.id}
           >
             <View style={styles.modeHeader}>
               <View style={styles.modeIcon}>
                 <ThemedText style={styles.emoji}>{mode.emoji}</ThemedText>
               </View>
               <View style={styles.modeInfo}>
-                <ThemedText type="defaultSemiBold" style={styles.modeTitle}>
+                <ThemedText style={styles.modeTitle}>
                   {mode.title}
                 </ThemedText>
                 <ThemedText style={styles.modeSubtitle}>
@@ -72,39 +75,42 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
                 </ThemedText>
               </View>
               {selectedMode === mode.id && (
-                <View style={styles.selectedIndicator}>
+                <Animated.View 
+                  entering={FadeInDown.delay(200)}
+                  style={styles.selectedIndicator}
+                >
                   <ThemedText style={styles.checkmark}>✓</ThemedText>
-                </View>
+                </Animated.View>
               )}
             </View>
             <ThemedText style={styles.modeDescription}>
               {mode.description}
             </ThemedText>
-          </TouchableOpacity>
+          </ModernCard>
         ))}
       </View>
 
-      <View style={styles.selectedModeInfo}>
-        {selectedMode && (
+      <Animated.View 
+        entering={FadeInDown.delay(500)} 
+        style={styles.selectedModeInfo}
+      >
+        {selectedModeData && (
           <>
             <ThemedText style={styles.selectedModeText}>
-              Selected: {modes.find(m => m.id === selectedMode)?.title}
+              Selected: {selectedModeData.title}
             </ThemedText>
-            <TouchableOpacity
-              style={[
-                styles.startButton,
-                { backgroundColor: modes.find(m => m.id === selectedMode)?.color }
-              ]}
+            <ModernButton
+              title="Start Quiz"
               onPress={onStartQuiz}
-            >
-              <ThemedText style={styles.startButtonText}>
-                Start Quiz
-              </ThemedText>
-            </TouchableOpacity>
+              variant={selectedModeData.variant}
+              size="lg"
+              icon="🚀"
+              style={styles.startButton}
+            />
           </>
         )}
-      </View>
-    </ThemedView>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -113,41 +119,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modesContainer: {
-    gap: 16,
-    marginBottom: 30,
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
   },
   modeCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  selectedModeCard: {
-    borderWidth: 2,
-    borderColor: '#2196F3',
-    backgroundColor: '#f3f9ff',
+    marginVertical: 0,
   },
   modeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacing.sm,
   },
   modeIcon: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: Spacing.md,
   },
   emoji: {
     fontSize: 24,
@@ -157,50 +147,45 @@ const styles = StyleSheet.create({
   },
   modeTitle: {
     fontSize: 18,
+    fontWeight: '700',
+    color: '#ffffff',
     marginBottom: 4,
   },
   modeSubtitle: {
     fontSize: 14,
-    opacity: 0.7,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
   },
   selectedIndicator: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#4CAF50',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkmark: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
   modeDescription: {
     fontSize: 14,
     lineHeight: 20,
-    opacity: 0.8,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '400',
   },
   selectedModeInfo: {
     alignItems: 'center',
-    gap: 16,
+    gap: Spacing.md,
   },
   selectedModeText: {
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+    color: '#ffffff',
   },
   startButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 40,
-    paddingVertical: 16,
-    borderRadius: 8,
     minWidth: 200,
-    alignItems: 'center',
-  },
-  startButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
   },
 });

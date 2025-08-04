@@ -1,13 +1,12 @@
-import React from 'react';
-import { StyleSheet, View, Alert, Text } from 'react-native';
+import { ModernColors, Spacing } from '@/constants/ModernColors';
+import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'expo-router';
+import React from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from './ThemedText';
-import { ThemedView } from './ThemedView';
-import AnimatedCard from './modern/AnimatedCard';
+import ModernCard from './layout/ModernCard';
 import ModernButton from './modern/ModernButton';
-import { useAppStore } from '@/store/useAppStore';
-import { ModernColors, Spacing } from '@/constants/ModernColors';
 
 export default function QuickActions() {
   const router = useRouter();
@@ -63,17 +62,18 @@ export default function QuickActions() {
         </View>
 
         <Animated.View entering={FadeInDown.delay(1000)}>
-          <AnimatedCard 
-            gradientColors={ModernColors.gradients.dark}
+          <ModernCard 
+            variant="neutral"
             onPress={() => router.push('/quiz')}
             style={styles.fullQuizCard}
+            glassEffect={true}
           >
             <View style={styles.fullQuizContent}>
               <Text style={styles.fullQuizEmoji}>🎯</Text>
               <ThemedText style={styles.fullQuizTitle}>Full Learning Session</ThemedText>
               <ThemedText style={styles.fullQuizSubtitle}>Complete vocabulary practice</ThemedText>
             </View>
-          </AnimatedCard>
+          </ModernCard>
         </Animated.View>
       </View>
     </View>
