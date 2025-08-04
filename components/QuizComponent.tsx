@@ -6,6 +6,8 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Pressable,
+  ScrollView,
   StyleSheet,
   View
 } from 'react-native';
@@ -18,7 +20,6 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
-import ModernCard from './layout/ModernCard';
 import ModernButton from './modern/ModernButton';
 
 export default function QuizComponent() {
@@ -47,6 +48,17 @@ export default function QuizComponent() {
       }
     }
   }, [currentSession?.currentIndex, settings.autoPlay, playWord, currentSession]);
+
+  // デバッグ用: クイズデータの確認
+  useEffect(() => {
+    if (currentSession) {
+      console.log('Current Session Debug:', {
+        totalQuestions: currentSession.questions.length,
+        currentIndex: currentSession.currentIndex,
+        currentQuestion: currentSession.questions[currentSession.currentIndex]
+      });
+    }
+  }, [currentSession]);
 
   if (!currentSession) {
     return (
@@ -142,155 +154,177 @@ export default function QuizComponent() {
         style={styles.gradientBackground}
       >
         <View style={styles.container}>
-          {/* Modern Progress Bar */}
-          <Animated.View entering={FadeInUp.delay(100)} style={styles.progressContainer}>
-            <View style={styles.modernProgressBar}>
-              <Animated.View 
-                style={[styles.modernProgressFill, { width: `${progress}%` }]} 
-                entering={FadeInDown.delay(200)}
-              />
-            </View>
-            <ThemedText style={styles.progressText}>
-              Question {currentSession.currentIndex + 1} of {currentSession.questions.length}
-            </ThemedText>
-          </Animated.View>
-
-          {/* Modern Question Card */}
-          <Animated.View entering={FadeInDown.delay(300)} style={styles.questionCardWrapper}>
-            <ModernCard 
-              variant="primary"
-              pressable={false}
-              style={styles.questionCard}
-            >
-              <Animated.View entering={SlideInLeft.delay(400)}>
-                <ThemedText type="title" style={styles.modernWord}>
-                  {currentQuestion.word}
-                </ThemedText>
-              </Animated.View>
-              
-              <Animated.View entering={SlideInRight.delay(500)}>
-                <ModernButton
-                  title={isPlaying ? 'Playing...' : 'Play Pronunciation'}
-                  onPress={() => playWord(currentQuestion.word, currentQuestion.pronunciation)}
-                  variant={isPlaying ? 'warning' : 'success'}
-                  size="md"
-                  icon={isPlaying ? '⏸️' : '🔊'}
-                  disabled={isPlaying}
-                  style={styles.modernAudioButton}
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Modern Progress Bar */}
+            <Animated.View entering={FadeInUp.delay(100)} style={styles.progressContainer}>
+              <View style={styles.modernProgressBar}>
+                <Animated.View 
+                  style={[styles.modernProgressFill, { width: `${progress}%` }]} 
+                  entering={FadeInDown.delay(200)}
                 />
-              </Animated.View>
-
-              <Animated.View entering={FadeInDown.delay(600)}>
-                <ThemedText style={styles.modernInstruction}>
-                  {showResult ? 'Answer selected!' : 'Select the correct definition:'}
-                </ThemedText>
-              </Animated.View>
-
-              <View style={styles.optionsContainer}>
-                {currentQuestion.options.map((option, index) => {
-                  const isSelected = selectedAnswer === option;
-                  const isCorrectOption = option === currentQuestion.correctAnswer;
-                  
-                  let gradientColors = ModernColors.gradients.neutral;
-                  
-                  if (showResult) {
-                    if (isCorrectOption) {
-                      gradientColors = ModernColors.gradients.success;
-                    } else if (isSelected && !isCorrectOption) {
-                      gradientColors = ModernColors.gradients.error;
-                    }
-                  } else if (isSelected) {
-                    gradientColors = ModernColors.gradients.primaryBlue;
-                  }
-
-                  return (
-                    <Animated.View key={index} entering={FadeInDown.delay(700 + index * 100)}>
-                      <ModernCard
-                        onPress={() => handleAnswerSelect(option)}
-                        variant={selectedAnswer === option ? 'success' : 'neutral'}
-                        pressable={!showResult}
-                        style={styles.modernOptionCard}
-                      >
-                        <View style={styles.optionContent}>
-                          <ThemedText style={styles.modernOptionLabel}>
-                            {String.fromCharCode(65 + index)})
-                          </ThemedText>
-                          <ThemedText style={styles.modernOptionText}>
-                            {option}
-                          </ThemedText>
-                        </View>
-                      </ModernCard>
-                    </Animated.View>
-                  );
-                })}
               </View>
+              <ThemedText style={styles.progressText}>
+                Question {currentSession.currentIndex + 1} of {currentSession.questions.length}
+              </ThemedText>
+            </Animated.View>
 
-              {showResult && (
-                <Animated.View entering={FadeInUp.delay(1000)} style={styles.resultContainer}>
-                  <ModernCard 
-                    variant={isCorrect ? 'success' : 'error'}
-                    pressable={false}
-                    style={styles.resultCard}
-                  >
-                    <ThemedText style={styles.modernResultText}>
-                      {isCorrect ? '✅ Correct!' : '❌ Incorrect'}
+            {/* Modern Question Card */}
+            <Animated.View entering={FadeInDown.delay(300)} style={styles.questionCardWrapper}>
+              <View style={styles.questionCard}>
+                <LinearGradient
+                  colors={ModernColors.gradients.primaryBlue as [string, string, ...string[]]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.questionCardGradient}
+                >
+                  <Animated.View entering={SlideInLeft.delay(400)}>
+                    <ThemedText type="title" style={styles.modernWord}>
+                      {currentQuestion.word}
                     </ThemedText>
-                    {!isCorrect && (
-                      <ThemedText style={styles.modernCorrectAnswerText}>
-                        Correct answer: {currentQuestion.correctAnswer}
-                      </ThemedText>
-                    )}
-                  </ModernCard>
+                  </Animated.View>
                   
-                  {/* Modern Navigation Buttons */}
-                  <View style={styles.navigationContainer}>
-                    {currentSession.currentIndex > 0 && (
-                      <ModernButton
-                        title="← Back"
-                        onPress={handleBack}
-                        variant="secondary"
-                        size="md"
-                        style={styles.navButton}
-                      />
-                    )}
-                    
-                    {!isLastQuestion && (
-                      <ModernButton
-                        title="Next →"
-                        onPress={handleNext}
-                        variant="primary"
-                        size="md"
-                        style={styles.navButton}
-                      />
-                    )}
+                  <Animated.View entering={SlideInRight.delay(500)}>
+                    <ModernButton
+                      title={isPlaying ? 'Playing...' : 'Play Pronunciation'}
+                      onPress={() => playWord(currentQuestion.word, currentQuestion.pronunciation)}
+                      variant={isPlaying ? 'warning' : 'success'}
+                      size="md"
+                      icon={isPlaying ? '⏸️' : '🔊'}
+                      disabled={isPlaying}
+                      style={styles.modernAudioButton}
+                    />
+                  </Animated.View>
+
+                  <Animated.View entering={FadeInDown.delay(600)}>
+                    <ThemedText style={styles.modernInstruction}>
+                      {showResult ? 'Answer selected!' : 'Select the correct definition:'}
+                    </ThemedText>
+                  </Animated.View>
+
+                  <View style={styles.optionsContainer}>
+                    {currentQuestion.options.map((option, index) => {
+                      const isSelected = selectedAnswer === option;
+                      const isCorrectOption = option === currentQuestion.correctAnswer;
+                      
+                      let gradientColors: [string, string, ...string[]] = ModernColors.gradients.neutral as [string, string, ...string[]];
+                      
+                      if (showResult) {
+                        if (isCorrectOption) {
+                          gradientColors = ModernColors.gradients.success as [string, string, ...string[]];
+                        } else if (isSelected && !isCorrectOption) {
+                          gradientColors = ModernColors.gradients.error as [string, string, ...string[]];
+                        } else {
+                          gradientColors = ModernColors.gradients.neutral as [string, string, ...string[]];
+                        }
+                      } else if (isSelected) {
+                        gradientColors = ModernColors.gradients.warning as [string, string, ...string[]];
+                      } else {
+                        gradientColors = ModernColors.gradients.neutral as [string, string, ...string[]];
+                      }
+
+                      return (
+                        <Animated.View key={index} entering={FadeInDown.delay(700 + index * 100)}>
+                          <Pressable
+                            onPress={() => handleAnswerSelect(option)}
+                            disabled={showResult}
+                            style={styles.modernOptionCard}
+                          >
+                            <LinearGradient
+                              colors={gradientColors}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 1 }}
+                              style={styles.optionCardGradient}
+                            >
+                              <View style={styles.optionContent}>
+                                <ThemedText style={styles.modernOptionLabel}>
+                                  {String.fromCharCode(65 + index)})
+                                </ThemedText>
+                                <ThemedText style={styles.modernOptionText}>
+                                  {option || `Option ${index + 1} (No definition)`}
+                                </ThemedText>
+                              </View>
+                            </LinearGradient>
+                          </Pressable>
+                        </Animated.View>
+                      );
+                    })}
                   </View>
-                </Animated.View>
-              )}
-            </ModernCard>
-          </Animated.View>
 
-          {/* Modern Action Buttons */}
-          <Animated.View entering={FadeInUp.delay(1100)} style={styles.buttonContainer}>
-            <ModernButton
-              title="Bookmark"
-              onPress={handleBookmark}
-              variant="warning"
-              size="md"
-              icon="📖"
-              style={styles.modernBookmarkButton}
-            />
+                  {showResult && (
+                    <Animated.View entering={FadeInUp.delay(1000)} style={styles.resultContainer}>
+                      <View style={styles.resultCard}>
+                        <LinearGradient
+                          colors={isCorrect ? ModernColors.gradients.success as [string, string, ...string[]] : ModernColors.gradients.error as [string, string, ...string[]]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.resultCardGradient}
+                        >
+                          <ThemedText style={styles.modernResultText}>
+                            {isCorrect ? '✅ Correct!' : '❌ Incorrect'}
+                          </ThemedText>
+                          {!isCorrect && (
+                            <ThemedText style={styles.modernCorrectAnswerText}>
+                              Correct answer: {currentQuestion.correctAnswer}
+                            </ThemedText>
+                          )}
+                        </LinearGradient>
+                      </View>
+                      
+                      {/* Modern Navigation Buttons */}
+                      <View style={styles.navigationContainer}>
+                        {currentSession.currentIndex > 0 && (
+                          <ModernButton
+                            title="← Back"
+                            onPress={handleBack}
+                            variant="secondary"
+                            size="md"
+                            style={styles.navButton}
+                          />
+                        )}
+                        
+                        {!isLastQuestion && (
+                          <ModernButton
+                            title="Next →"
+                            onPress={handleNext}
+                            variant="primary"
+                            size="md"
+                            style={styles.navButton}
+                          />
+                        )}
+                      </View>
+                    </Animated.View>
+                  )}
+                </LinearGradient>
+              </View>
+            </Animated.View>
 
-            {showResult && isLastQuestion && (
+            {/* Modern Action Buttons */}
+            <Animated.View entering={FadeInUp.delay(1100)} style={styles.buttonContainer}>
               <ModernButton
-                title="Finish Quiz"
-                onPress={handleFinish}
-                variant="primary"
-                size="lg"
-                icon="🎯"
-                style={styles.modernFinishButton}
+                title="Bookmark"
+                onPress={handleBookmark}
+                variant="warning"
+                size="md"
+                icon="📖"
+                style={styles.modernBookmarkButton}
               />
-            )}
-          </Animated.View>
+
+              {showResult && isLastQuestion && (
+                <ModernButton
+                  title="Finish Quiz"
+                  onPress={handleFinish}
+                  variant="primary"
+                  size="lg"
+                  icon="🎯"
+                  style={styles.modernFinishButton}
+                />
+              )}
+            </Animated.View>
+          </ScrollView>
         </View>
       </LinearGradient>
     </SafeAreaView>
@@ -307,6 +341,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: Spacing.lg,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xl,
   },
   progressContainer: {
     marginBottom: Spacing.xl,
@@ -336,14 +377,22 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   questionCard: {
-    flex: 1,
+    width: '100%',
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    ...ShadowStyles.medium,
+  },
+  questionCardGradient: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 300,
   },
   modernWord: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '800',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     textAlign: 'center',
     color: '#ffffff',
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
@@ -351,11 +400,11 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   modernAudioButton: {
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   modernInstruction: {
     fontSize: 18,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.md,
     textAlign: 'center',
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '500',
@@ -366,11 +415,21 @@ const styles = StyleSheet.create({
   },
   modernOptionCard: {
     marginVertical: 0,
+    marginHorizontal: 0,
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    ...ShadowStyles.small,
+  },
+  optionCardGradient: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xs,
   },
   optionContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    minHeight: 70,
   },
   modernOptionLabel: {
     fontSize: 18,
@@ -383,7 +442,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     flex: 1,
     color: '#ffffff',
-    fontWeight: '500',
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    lineHeight: 22,
+    textAlign: 'left',
   },
   resultContainer: {
     marginTop: Spacing.lg,
@@ -391,6 +455,13 @@ const styles = StyleSheet.create({
   },
   resultCard: {
     marginVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    ...ShadowStyles.medium,
+  },
+  resultCardGradient: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
     alignItems: 'center',
   },
   modernResultText: {

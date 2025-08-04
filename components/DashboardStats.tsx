@@ -1,4 +1,4 @@
-import { BorderRadius, ModernColors, Spacing } from '@/constants/ModernColors';
+import { BorderRadius, Spacing } from '@/constants/ModernColors';
 import { DashboardData, LearningGoals } from '@/types';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     fontSize: 24,
     fontWeight: '700',
-    color: ModernColors.gray[800],
+    color: '#ffffff',
   },
   statsGrid: {
     flexDirection: 'row',
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   modernStatCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 120,
+    minHeight: 140,
   },
   progressContainer: {
     alignItems: 'center',
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
     color: '#ffffff',
     marginBottom: Spacing.xs,

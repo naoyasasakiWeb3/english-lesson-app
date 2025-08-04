@@ -1,4 +1,4 @@
-import { ModernColors, Spacing } from '@/constants/ModernColors';
+import { Spacing } from '@/constants/ModernColors';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     fontSize: 24,
     fontWeight: '700',
-    color: ModernColors.gray[800],
+    color: '#ffffff',
   },
   actionsGrid: {
     gap: Spacing.md,

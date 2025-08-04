@@ -124,8 +124,8 @@ const styles = StyleSheet.create({
     marginRight: Spacing.lg,
   },
   levelBadgeCard: {
-    width: 80,
-    height: 80,
+    width: 90,
+    height: 90,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -133,18 +133,20 @@ const styles = StyleSheet.create({
   },
   modernLevelNumber: {
     color: '#ffffff',
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+    lineHeight: 30,
   },
   modernLevelLabel: {
     color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    lineHeight: 14,
   },
   modernProgressInfo: {
     flex: 1,
