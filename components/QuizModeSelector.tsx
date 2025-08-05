@@ -1,10 +1,10 @@
+import { Spacing } from '@/constants/ModernColors';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from './ThemedText';
 import ModernCard from './layout/ModernCard';
 import ModernButton from './modern/ModernButton';
-import { Spacing } from '@/constants/ModernColors';
 
 interface Props {
   selectedMode: 'random' | 'review' | 'bookmarked' | 'weak';
@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
   selectedModeInfo: {
     alignItems: 'center',
     gap: Spacing.md,
+    paddingBottom: Spacing.md,
   },
   selectedModeText: {
     fontSize: 16,
@@ -187,5 +188,6 @@ const styles = StyleSheet.create({
   },
   startButton: {
     minWidth: 200,
+    marginBottom: Spacing.lg,
   },
 });

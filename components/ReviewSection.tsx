@@ -1,19 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
+import { Spacing } from '@/constants/ModernColors';
+import { databaseService } from '@/services/database';
+import { useAppStore } from '@/store/useAppStore';
+import { Word } from '@/types';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
   ScrollView,
-  Alert 
+  StyleSheet,
+  View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInLeft, FadeInRight } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
 import { ThemedText } from './ThemedText';
 import ModernCard from './layout/ModernCard';
 import ModernButton from './modern/ModernButton';
-import { useAppStore } from '@/store/useAppStore';
-import { databaseService } from '@/services/database';
-import { Word } from '@/types';
-import { Spacing } from '@/constants/ModernColors';
 
 export default function ReviewSection() {
   const router = useRouter();
@@ -223,7 +223,7 @@ export default function ReviewSection() {
 
       {/* Quick Actions */}
       <Animated.View entering={FadeInDown.delay(300)}>
-        <ModernCard variant="primary" delay={0}>
+        <ModernCard variant="primary" delay={0} style={styles.quickActionsCard}>
           <ThemedText style={styles.sectionTitle}>
             Quick Review Options
           </ThemedText>
@@ -241,7 +241,7 @@ export default function ReviewSection() {
             <ModernButton
               title="Refresh Data"
               onPress={loadReviewData}
-              variant="neutral"
+              variant="secondary"
               size="md"
               icon="🔄"
               style={styles.quickActionButton}
@@ -348,11 +348,15 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   quickActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: Spacing.xs,
     marginTop: Spacing.md,
   },
   quickActionButton: {
-    flex: 1,
+    width: '80%',
+  },
+  quickActionsCard: {
+    marginBottom: Spacing.lg,
   },
 });

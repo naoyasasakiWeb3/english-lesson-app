@@ -264,7 +264,7 @@ export default function QuizComponent() {
                           style={styles.resultCardGradient}
                         >
                           <ThemedText style={styles.modernResultText}>
-                            {isCorrect ? '✅ Correct!' : '❌ Incorrect'}
+                            {isCorrect ? '✅ Correct!' : '✖ Incorrect'}
                           </ThemedText>
                           {!isCorrect && (
                             <ThemedText style={styles.modernCorrectAnswerText}>
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
   },
   questionCardWrapper: {
     flex: 1,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.xs,
   },
   questionCard: {
     width: '100%',
@@ -450,11 +450,12 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   resultContainer: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
     alignItems: 'center',
   },
   resultCard: {
     marginVertical: Spacing.sm,
+    marginHorizontal: 0,
     borderRadius: BorderRadius.lg,
     overflow: 'hidden',
     ...ShadowStyles.medium,
@@ -478,22 +479,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: Spacing.lg,
-    gap: Spacing.md,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+    gap: Spacing.xs,
+    paddingBottom: Spacing.xl,
   },
   modernBookmarkButton: {
-    flex: 1,
+    width: '100%',
+    maxWidth: 200,
   },
   modernFinishButton: {
-    flex: 2,
+    width: '100%',
+    maxWidth: 300,
   },
   navigationContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    marginTop: Spacing.lg,
+    marginTop: Spacing.sm,
     gap: Spacing.md,
   },
   navButton: {
