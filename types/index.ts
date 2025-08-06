@@ -14,6 +14,9 @@ export interface QuizQuestion {
   pronunciation?: string; // 音声URL
   difficulty: number;
   category?: string;
+  definition?: string;
+  example?: string;
+  questionType?: 'definition' | 'synonym' | 'antonym' | 'example';
 }
 
 export interface WordData {

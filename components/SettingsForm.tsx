@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -7,25 +7,77 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useForm, Controller } from 'react-hook-form';
+import { useRouter } from 'expo-router';
 import { ThemedText } from './ThemedText';
 import ModernCard from './layout/ModernCard';
 import ModernButton from './modern/ModernButton';
+import ApiKeyModal from './ApiKeyModal';
 import { useAppStore } from '@/store/useAppStore';
 import { useAudio } from '@/hooks/useAudio';
+import { useWordsApiKey } from '@/hooks/useWordsApi';
+import { databaseService } from '@/services/database';
 import { LearningGoals, DifficultyLevel } from '@/types';
 import { Spacing } from '@/constants/ModernColors';
 
 export default function SettingsForm() {
+  const router = useRouter();
   const { userSettings, setUserSettings } = useAppStore();
   const { settings: audioSettings, updateSettings: updateAudioSettings, speakWord } = useAudio();
+  const { status: apiStatus } = useWordsApiKey();
+  
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [userLevel, setUserLevel] = useState({ current_level: 'A1', target_level: 'B2' });
+  const [levelStats, setLevelStats] = useState<{[level: string]: number}>({});
 
   const { control, handleSubmit } = useForm<LearningGoals>({
     defaultValues: userSettings,
   });
 
+  useEffect(() => {
+    loadUserLevel();
+    loadLevelStats();
+  }, []);
+
+  const loadUserLevel = async () => {
+    try {
+      const level = await databaseService.getUserCefrLevel();
+      setUserLevel(level);
+    } catch (error) {
+      console.error('Error loading user level:', error);
+    }
+  };
+
+  const loadLevelStats = async () => {
+    try {
+      const stats = await databaseService.getCefrLevelStats();
+      setLevelStats(stats);
+    } catch (error) {
+      console.error('Error loading level stats:', error);
+    }
+  };
+
   const onSubmit = (data: LearningGoals) => {
     setUserSettings(data);
     Alert.alert('Success', 'Settings saved successfully!');
+  };
+
+  const handleCefrLevelChange = async (currentLevel: string, targetLevel: string) => {
+    try {
+      await databaseService.updateUserCefrLevel(currentLevel, targetLevel);
+      setUserLevel({ current_level: currentLevel, target_level: targetLevel });
+      Alert.alert('Success', 'CEFR levels updated successfully!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update CEFR levels');
+    }
+  };
+
+  const handleApiKeySuccess = () => {
+    setShowApiModal(false);
+    Alert.alert('Success', 'API key configured successfully!');
+  };
+
+  const navigateToSavedWords = () => {
+    router.push('/saved-words' as any);
   };
 
   const studyTimeOptions = [5, 10, 15, 20, 30, 45, 60, 90, 120];
@@ -276,6 +328,116 @@ export default function SettingsForm() {
         </ModernCard>
       </Animated.View>
 
+      {/* CEFR Level Settings */}
+      <Animated.View entering={FadeInDown.delay(400)}>
+        <ModernCard variant="secondary" delay={0}>
+          <ThemedText style={styles.sectionTitle}>📚 CEFR Levels</ThemedText>
+          
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Current Level: {userLevel.current_level}</ThemedText>
+            <ThemedText style={styles.label}>Target Level: {userLevel.target_level}</ThemedText>
+            
+            <View style={styles.levelContainer}>
+              {Object.entries(levelStats).map(([level, count]) => (
+                <View key={level} style={styles.levelRow}>
+                  <ThemedText style={styles.levelText}>
+                    {level}: {count} words
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+            
+            <ModernButton
+              title="Change CEFR Levels"
+              onPress={() => {
+                Alert.alert(
+                  'Change Levels',
+                  'Select your current and target CEFR levels',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Update Levels', onPress: () => {
+                      // This would ideally open a level selection modal
+                      Alert.prompt(
+                        'Current Level',
+                        'Enter your current CEFR level (A1, A2, B1, B2, C1, C2)',
+                        (currentLevel) => {
+                          if (currentLevel) {
+                            Alert.prompt(
+                              'Target Level',
+                              'Enter your target CEFR level',
+                              (targetLevel) => {
+                                if (targetLevel) {
+                                  handleCefrLevelChange(currentLevel.toUpperCase(), targetLevel.toUpperCase());
+                                }
+                              }
+                            );
+                          }
+                        }
+                      );
+                    }}
+                  ]
+                );
+              }}
+              variant="primary"
+              size="md"
+              icon="🎯"
+              style={styles.levelButton}
+            />
+          </View>
+        </ModernCard>
+      </Animated.View>
+
+      {/* API Settings */}
+      <Animated.View entering={FadeInDown.delay(500)}>
+        <ModernCard variant={apiStatus.configured ? 'success' : 'warning'} delay={0}>
+          <ThemedText style={styles.sectionTitle}>🔑 Words API</ThemedText>
+          
+          <View style={styles.setting}>
+            <View style={styles.apiStatusRow}>
+              <View style={styles.apiStatusInfo}>
+                <ThemedText style={styles.apiStatusTitle}>
+                  Status: {apiStatus.configured ? 'Configured' : 'Not Set'}
+                </ThemedText>
+                <ThemedText style={styles.apiStatusDescription}>
+                  {apiStatus.configured 
+                    ? 'API key is configured and provides enhanced word data'
+                    : 'Configure API key for detailed word information'
+                  }
+                </ThemedText>
+                {apiStatus.configured && (
+                  <ThemedText style={styles.apiValidationText}>
+                    {apiStatus.valid === true ? '✅ Valid' : apiStatus.valid === false ? '❌ Invalid' : '🔄 Checking...'}
+                  </ThemedText>
+                )}
+              </View>
+              <ThemedText style={styles.apiEmoji}>
+                {apiStatus.configured ? '✅' : '⚠️'}
+              </ThemedText>
+            </View>
+            
+            <View style={styles.apiButtons}>
+              <ModernButton
+                title={apiStatus.configured ? 'Update API Key' : 'Setup API Key'}
+                onPress={() => setShowApiModal(true)}
+                variant={apiStatus.configured ? 'neutral' : 'primary'}
+                size="md"
+                icon="🔑"
+                style={styles.apiButton}
+              />
+              
+              <ModernButton
+                title="View Saved Words"
+                onPress={navigateToSavedWords}
+                variant="secondary"
+                size="md"
+                icon="📚"
+                style={styles.apiButton}
+              />
+            </View>
+          </View>
+        </ModernCard>
+      </Animated.View>
+
       {/* Save Button */}
       <Animated.View entering={FadeInDown.delay(400)}>
         <ModernButton
@@ -287,6 +449,14 @@ export default function SettingsForm() {
           style={styles.saveButton}
         />
       </Animated.View>
+
+      <ApiKeyModal
+        visible={showApiModal}
+        onClose={() => setShowApiModal(false)}
+        onSuccess={handleApiKeySuccess}
+        title="Configure Words API"
+        skipable={true}
+      />
     </View>
   );
 }
@@ -392,6 +562,65 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   saveButton: {
+    width: '100%',
+  },
+  // CEFR Level styles
+  levelContainer: {
+    marginBottom: Spacing.md,
+    gap: Spacing.xs,
+  },
+  levelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  levelText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  levelButton: {
+    width: '100%',
+  },
+  // API Settings styles
+  apiStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
+  },
+  apiStatusInfo: {
+    flex: 1,
+  },
+  apiStatusTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: Spacing.xs,
+  },
+  apiStatusDescription: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    lineHeight: 18,
+    marginBottom: Spacing.xs,
+  },
+  apiValidationText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  apiEmoji: {
+    fontSize: 28,
+    marginLeft: Spacing.sm,
+  },
+  apiButtons: {
+    gap: Spacing.sm,
+  },
+  apiButton: {
     width: '100%',
   },
 });

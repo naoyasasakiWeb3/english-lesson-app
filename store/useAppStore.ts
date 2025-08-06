@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { cefrQuizService } from '../services/cefrQuizService';
 import { databaseService } from '../services/database';
+import { enrichedQuizService } from '../services/enrichedQuizService'; // Added import
 import { DashboardData, LearningGoals, QuizQuestion, Word } from '../types';
 
 interface CurrentSession {
@@ -73,6 +75,53 @@ const defaultProgress = {
   xp: 0
 };
 
+// Helper functions
+const mapCefrToLegacyDifficulty = (cefrLevel: string): number => {
+  switch (cefrLevel) {
+    case 'A1':
+    case 'A2':
+      return 1;
+    case 'B1':
+    case 'B2':
+      return 2;
+    case 'C1':
+    case 'C2':
+      return 3;
+    default:
+      return 2;
+  }
+};
+
+const generateQuestionsFromLegacyWords = async (words: Word[], count: number): Promise<QuizQuestion[]> => {
+  const questions: QuizQuestion[] = [];
+  const wordsToUse = words.slice(0, count);
+  
+  for (let i = 0; i < wordsToUse.length; i++) {
+    const word = wordsToUse[i];
+    const otherWords = await databaseService.getRandomWords(10);
+    const wrongAnswers = otherWords
+      .filter(w => w.id !== word.id)
+      .slice(0, 3)
+      .map(w => w.definition);
+
+    const options = [word.definition, ...wrongAnswers].sort(() => Math.random() - 0.5);
+
+    questions.push({
+      id: `${word.id}-${i}`,
+      word: word.word,
+      correctAnswer: word.definition,
+      options,
+      pronunciation: word.pronunciation,
+      difficulty: word.difficulty,
+      category: word.category,
+      definition: word.definition,
+      questionType: 'definition'
+    });
+  }
+  
+  return questions;
+};
+
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
@@ -111,51 +160,90 @@ export const useAppStore = create<AppStore>()(
         set({ isLoading: true });
         try {
           const { userSettings } = get();
-          const count = wordCount || userSettings.dailyWordCount;
-          let words: Word[] = [];
+          // randomモードでは固定で10問、他のモードでは設定された値を使用
+          const count = mode === 'random' ? 10 : (wordCount || userSettings.dailyWordCount);
+          let questions: QuizQuestion[] = [];
 
           switch (mode) {
             case 'random':
-              const difficultyMap = { beginner: 1, intermediate: 2, advanced: 3 };
-              words = await databaseService.getWordsByDifficulty(difficultyMap[userSettings.difficultyLevel]);
+              // 優先: enriched vocabularyを使用した新システム
+              console.log('Starting quiz with enriched vocabulary system...');
+              try {
+                const userLevel = await databaseService.getUserCefrLevel();
+                const enrichedQuestions = await enrichedQuizService.createEnrichedCefrQuiz(userLevel.current_level, count);
+                
+                // Convert enriched questions to our QuizQuestion format
+                questions = enrichedQuestions.map((cefrQ, index) => ({
+                  id: `${cefrQ.word.id}-${index}`,
+                  word: cefrQ.word.word,
+                  correctAnswer: cefrQ.correctAnswer,
+                  options: cefrQ.options,
+                  pronunciation: cefrQ.word.pronunciation,
+                  difficulty: mapCefrToLegacyDifficulty(cefrQ.word.cefr_level),
+                  category: cefrQ.word.pos || 'general',
+                  definition: cefrQ.word.definition,
+                  example: cefrQ.word.example_sentence,
+                  questionType: cefrQ.type
+                }));
+                
+                console.log(`Successfully created ${questions.length} questions with enriched vocabulary`);
+              } catch (enrichedError) {
+                console.warn('Enriched vocabulary system failed, falling back to database system:', enrichedError);
+                
+                // フォールバック: 既存のデータベースシステムを使用
+                const userLevel = await databaseService.getUserCefrLevel();
+                const cefrQuestions = await cefrQuizService.createCefrQuiz(userLevel.current_level, count);
+                
+                // Convert CEFR questions to our QuizQuestion format
+                questions = cefrQuestions.map((cefrQ, index) => ({
+                  id: `${cefrQ.word.id}-${index}`,
+                  word: cefrQ.word.word,
+                  correctAnswer: cefrQ.correctAnswer,
+                  options: cefrQ.options,
+                  pronunciation: cefrQ.word.pronunciation,
+                  difficulty: mapCefrToLegacyDifficulty(cefrQ.word.cefr_level),
+                  category: cefrQ.word.pos || 'general',
+                  definition: cefrQ.word.definition,
+                  example: cefrQ.word.example_sentence,
+                  questionType: cefrQ.type
+                }));
+                
+                console.log(`Fallback: created ${questions.length} questions with database system`);
+              }
               break;
             case 'review':
-              words = await databaseService.getWeakWords();
+              const weakWords = await databaseService.getWeakWords();
+              questions = await generateQuestionsFromLegacyWords(weakWords, count);
               break;
             case 'bookmarked':
-              words = await databaseService.getBookmarkedWords();
+              const bookmarkedWords = await databaseService.getBookmarkedWords();
+              questions = await generateQuestionsFromLegacyWords(bookmarkedWords, count);
               break;
             case 'weak':
-              words = await databaseService.getWeakWords();
+              const weakWordsAgain = await databaseService.getWeakWords();
+              questions = await generateQuestionsFromLegacyWords(weakWordsAgain, count);
               break;
           }
 
-          if (words.length === 0) {
-            words = await databaseService.getRandomWords(count);
+          if (questions.length === 0) {
+            // Fallback to random CEFR words if no questions generated
+            console.log('Falling back to default A2 level quiz...');
+            const fallbackQuestions = await cefrQuizService.createCefrQuiz('A2', count);
+            questions = fallbackQuestions.map((cefrQ, index) => ({
+              id: `${cefrQ.word.id}-${index}`,
+              word: cefrQ.word.word,
+              correctAnswer: cefrQ.correctAnswer,
+              options: cefrQ.options,
+              pronunciation: cefrQ.word.pronunciation,
+              difficulty: mapCefrToLegacyDifficulty(cefrQ.word.cefr_level),
+              category: cefrQ.word.pos || 'general',
+              definition: cefrQ.word.definition,
+              example: cefrQ.word.example_sentence,
+              questionType: cefrQ.type
+            }));
           }
 
-          // クイズ問題を生成
-          const questions: QuizQuestion[] = await Promise.all(
-            words.slice(0, count).map(async (word, index) => {
-              const otherWords = await databaseService.getRandomWords(10);
-              const wrongAnswers = otherWords
-                .filter(w => w.id !== word.id)
-                .slice(0, 3)
-                .map(w => w.definition);
-
-              const options = [word.definition, ...wrongAnswers].sort(() => Math.random() - 0.5);
-
-              return {
-                id: `${word.id}-${index}`,
-                word: word.word,
-                correctAnswer: word.definition,
-                options,
-                pronunciation: word.pronunciation,
-                difficulty: word.difficulty,
-                category: word.category
-              };
-            })
-          );
+          console.log(`Quiz started successfully with ${questions.length} questions`);
 
           set({
             currentSession: {
@@ -168,10 +256,12 @@ export const useAppStore = create<AppStore>()(
           });
         } catch (error) {
           console.error('Start quiz error:', error);
+          throw error;
         } finally {
           set({ isLoading: false });
         }
       },
+
 
       // 回答送信
       submitAnswer: async (questionId: string, answer: string) => {

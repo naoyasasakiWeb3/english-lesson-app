@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import { Word, UserProgress, StudySession } from '../types';
+import { StudySession, UserProgress, Word } from '../types';
+import vocabularyData from './vocabulary.json';
 
 const DATABASE_NAME = 'vocabmaster.db';
 
@@ -60,25 +61,68 @@ class DatabaseService {
       );
     `);
 
+    // CEFR Words table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS cefr_words (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT UNIQUE NOT NULL,
+        pos TEXT,
+        cefr_level TEXT NOT NULL,
+        core_inventory INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Word Details table (for Words API data)
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS word_details (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word_id INTEGER NOT NULL,
+        definition TEXT,
+        pronunciation TEXT,
+        example_sentence TEXT,
+        etymology TEXT,
+        synonyms TEXT,
+        antonyms TEXT,
+        difficulty_score REAL,
+        frequency_score REAL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (word_id) REFERENCES cefr_words (id)
+      );
+    `);
+
+    // User CEFR Levels table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS user_cefr_levels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT DEFAULT 'default',
+        current_level TEXT DEFAULT 'A1',
+        target_level TEXT DEFAULT 'B2',
+        last_assessment_date DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Create indexes for better performance
     await this.db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_words_difficulty ON words(difficulty);
       CREATE INDEX IF NOT EXISTS idx_words_category ON words(category);
       CREATE INDEX IF NOT EXISTS idx_user_progress_word_id ON user_progress(word_id);
       CREATE INDEX IF NOT EXISTS idx_study_sessions_date ON study_sessions(date);
+      CREATE INDEX IF NOT EXISTS idx_cefr_words_level ON cefr_words(cefr_level);
+      CREATE INDEX IF NOT EXISTS idx_cefr_words_word ON cefr_words(word);
+      CREATE INDEX IF NOT EXISTS idx_word_details_word_id ON word_details(word_id);
     `);
   }
 
   private async seedInitialData(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    // Check if data already exists
+    // Check if legacy words already exist
     const existingWords = await this.db.getFirstAsync('SELECT COUNT(*) as count FROM words');
-    if (existingWords && (existingWords as any).count > 0) {
-      return; // Data already seeded
-    }
-
-    // Initial word data for testing
+    if (!existingWords || (existingWords as any).count === 0) {
+      // Initial word data for testing (reduced set)
     const sampleWords = [
       { word: 'beautiful', definition: 'having beauty; pleasing to the senses or mind', difficulty: 1, category: 'general' },
       { word: 'difficult', definition: 'hard to do, deal with, or understand', difficulty: 1, category: 'general' },
@@ -117,7 +161,48 @@ class DatabaseService {
       );
     }
 
-    console.log(`Seeded ${sampleWords.length} initial words`);
+      console.log(`Seeded ${sampleWords.length} legacy words`);
+    }
+
+    // Check if CEFR words already exist
+    const existingCefrWords = await this.db.getFirstAsync('SELECT COUNT(*) as count FROM cefr_words');
+    if (!existingCefrWords || (existingCefrWords as any).count === 0) {
+      console.log('Seeding CEFR-J vocabulary data...');
+      
+      // Seed CEFR-J vocabulary data
+      let seededCount = 0;
+      const batchSize = 100;
+      
+      for (let i = 0; i < vocabularyData.vocabulary.length; i += batchSize) {
+        const batch = vocabularyData.vocabulary.slice(i, i + batchSize);
+        
+        await this.db.withTransactionAsync(async () => {
+          for (const item of batch) {
+            try {
+              await this.db!.runAsync(
+                'INSERT INTO cefr_words (word, pos, cefr_level, core_inventory) VALUES (?, ?, ?, ?)',
+                [item.word, item.pos, item.cefr, item.coreInventory1 || 0]
+              );
+              seededCount++;
+            } catch {
+              console.warn(`Skipping duplicate word: ${item.word}`);
+            }
+          }
+        });
+      }
+      
+      console.log(`Seeded ${seededCount} CEFR-J words`);
+    }
+
+    // Check if user CEFR level settings exist
+    const existingUserLevel = await this.db.getFirstAsync('SELECT COUNT(*) as count FROM user_cefr_levels');
+    if (!existingUserLevel || (existingUserLevel as any).count === 0) {
+      await this.db.runAsync(
+        'INSERT INTO user_cefr_levels (user_id, current_level, target_level) VALUES (?, ?, ?)',
+        ['default', 'A1', 'B2']
+      );
+      console.log('Seeded default user CEFR level settings');
+    }
   }
 
   // Word operations
@@ -174,6 +259,204 @@ class DatabaseService {
     );
     
     return result.lastInsertRowId;
+  }
+
+  // CEFR Words operations
+  async getCefrWordsByLevel(cefrLevel: string, limit?: number): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const query = limit 
+      ? 'SELECT * FROM cefr_words WHERE cefr_level = ? ORDER BY RANDOM() LIMIT ?'
+      : 'SELECT * FROM cefr_words WHERE cefr_level = ? ORDER BY word ASC';
+    
+    const params = limit ? [cefrLevel, limit] : [cefrLevel];
+    const result = await this.db.getAllAsync(query, params);
+    
+    return result;
+  }
+
+  async getRandomCefrWords(cefrLevel: string, count: number = 20): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    // より多くの候補を取得してアプリケーション側でランダム化
+    const candidateCount = Math.min(count * 5, 1000); // 最大1000個まで
+    
+    const result = await this.db.getAllAsync(`
+      SELECT cw.*, wd.definition, wd.pronunciation, wd.example_sentence,
+             wd.synonyms, wd.antonyms, wd.difficulty_score
+      FROM cefr_words cw
+      LEFT JOIN word_details wd ON cw.id = wd.word_id
+      WHERE cw.cefr_level = ? 
+      ORDER BY RANDOM() 
+      LIMIT ?
+    `, [cefrLevel, candidateCount]);
+    
+    if (result.length === 0) {
+      return [];
+    }
+    
+    // アプリケーション側で追加のランダム化を実行
+    const shuffled = this.enhancedRandomSelection(result);
+    
+    // 要求された数まで切り詰め
+    return shuffled.slice(0, count);
+  }
+
+  // 強化されたランダム選択（アルファベット順の偏りを防ぐ）
+  private enhancedRandomSelection<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    
+    // Step 1: Fisher-Yates shuffle
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
+    // Step 2: グループベースの追加ランダム化
+    const groupSize = Math.ceil(shuffled.length / 8);
+    for (let group = 0; group < 8; group++) {
+      const start = group * groupSize;
+      const end = Math.min(start + groupSize, shuffled.length);
+      
+      // グループ内でさらにシャッフル
+      for (let i = end - 1; i > start; i--) {
+        const j = start + Math.floor(Math.random() * (i - start + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+    }
+    
+    // Step 3: 最終的なクロスシャッフル
+    for (let i = 0; i < Math.min(50, shuffled.length); i++) {
+      const randomIndex = Math.floor(Math.random() * shuffled.length);
+      [shuffled[i], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[i]];
+    }
+    
+    return shuffled;
+  }
+
+  async getCefrWordById(wordId: number): Promise<any | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const result = await this.db.getFirstAsync(`
+      SELECT cw.*, wd.definition, wd.pronunciation, wd.example_sentence, 
+             wd.synonyms, wd.antonyms, wd.difficulty_score
+      FROM cefr_words cw
+      LEFT JOIN word_details wd ON cw.id = wd.word_id
+      WHERE cw.id = ?
+    `, [wordId]);
+    
+    return result;
+  }
+
+  async searchCefrWords(searchTerm: string, cefrLevel?: string): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    let query = `
+      SELECT cw.*, wd.definition 
+      FROM cefr_words cw 
+      LEFT JOIN word_details wd ON cw.id = wd.word_id
+      WHERE cw.word LIKE ?
+    `;
+    let params = [`%${searchTerm}%`];
+    
+    if (cefrLevel) {
+      query += ' AND cw.cefr_level = ?';
+      params.push(cefrLevel);
+    }
+    
+    query += ' ORDER BY cw.word ASC LIMIT 50';
+    
+    const result = await this.db.getAllAsync(query, params);
+    return result;
+  }
+
+  // User CEFR Level operations
+  async getUserCefrLevel(): Promise<any> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const result = await this.db.getFirstAsync(
+      'SELECT * FROM user_cefr_levels WHERE user_id = ?',
+      ['default']
+    );
+    
+    return result || { current_level: 'A1', target_level: 'B2' };
+  }
+
+  async updateUserCefrLevel(currentLevel: string, targetLevel?: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const existing = await this.getUserCefrLevel();
+    
+    if (existing.id) {
+      await this.db.runAsync(`
+        UPDATE user_cefr_levels 
+        SET current_level = ?, target_level = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `, [currentLevel, targetLevel || existing.target_level, 'default']);
+    } else {
+      await this.db.runAsync(
+        'INSERT INTO user_cefr_levels (user_id, current_level, target_level) VALUES (?, ?, ?)',
+        ['default', currentLevel, targetLevel || 'B2']
+      );
+    }
+  }
+
+  // Word Details operations
+  async addWordDetails(wordId: number, details: {
+    definition?: string;
+    pronunciation?: string;
+    example_sentence?: string;
+    etymology?: string;
+    synonyms?: string;
+    antonyms?: string;
+    difficulty_score?: number;
+    frequency_score?: number;
+  }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    await this.db.runAsync(`
+      INSERT OR REPLACE INTO word_details 
+      (word_id, definition, pronunciation, example_sentence, etymology, synonyms, antonyms, difficulty_score, frequency_score)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      wordId,
+      details.definition || null,
+      details.pronunciation || null,
+      details.example_sentence || null,
+      details.etymology || null,
+      details.synonyms || null,
+      details.antonyms || null,
+      details.difficulty_score || null,
+      details.frequency_score || null
+    ]);
+  }
+
+  async getCefrLevelStats(): Promise<{[level: string]: number}> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const result = await this.db.getAllAsync(`
+      SELECT cefr_level, COUNT(*) as count 
+      FROM cefr_words 
+      GROUP BY cefr_level 
+      ORDER BY cefr_level
+    `);
+    
+    const stats: {[level: string]: number} = {};
+    result.forEach((row: any) => {
+      stats[row.cefr_level] = row.count;
+    });
+    
+    return stats;
+  }
+
+  async getAllCefrWords(): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const result = await this.db.getAllAsync(`
+      SELECT * FROM cefr_words ORDER BY word ASC
+    `);
+    
+    return result;
   }
 
   // User progress operations
@@ -287,7 +570,7 @@ class DatabaseService {
       ORDER BY date DESC
     `, [startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0]]);
     
-    return result.map(session => ({
+    return result.map((session: any) => ({
       ...session,
       date: new Date(session.date)
     })) as StudySession[];
