@@ -1,6 +1,6 @@
-import { Audio } from 'expo-audio';
-import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
+import * as Speech from 'expo-speech';
 
 interface AudioSettings {
   accent: 'us' | 'uk';
@@ -15,7 +15,7 @@ interface CachedAudio {
 }
 
 class AudioService {
-  private sound: Audio.AudioPlayer | null = null;
+  private sound: Audio.Sound | null = null;
   private readonly AUDIO_CACHE_PREFIX = 'audio_cache_';
   private readonly CACHE_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
   private settings: AudioSettings = {
@@ -32,9 +32,15 @@ class AudioService {
 
   private async initializeAudio(): Promise<void> {
     try {
-      // expo-audio has different initialization
-      // Basic setup is automatic
-      console.log('Audio service initialized');
+      // Set audio mode for playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      console.log('Audio service initialized with expo-av');
     } catch (error) {
       console.error('Error initializing audio:', error);
     }
@@ -108,7 +114,8 @@ class AudioService {
     try {
       // Stop previous sound
       if (this.sound) {
-        await this.sound.remove();
+        await this.sound.stopAsync();
+        await this.sound.unloadAsync();
         this.sound = null;
       }
 
@@ -116,19 +123,28 @@ class AudioService {
       const cachedAudio = await this.getCachedAudio(url);
       const audioUri = cachedAudio?.uri || url;
 
-      // Create and load new sound with expo-audio
-      this.sound = new Audio.AudioPlayer(audioUri);
+      // Create and load new sound with expo-av
+      this.sound = new Audio.Sound();
+      
+      // Load the audio first
+      const loadResult = await this.sound.loadAsync({ uri: audioUri });
+      
+      // Check if load was successful
+      if (!loadResult.isLoaded) {
+        throw new Error('Failed to load audio file');
+      }
       
       // Set volume
-      this.sound.volume = this.settings.volume;
+      await this.sound.setVolumeAsync(this.settings.volume);
       
       // Play the audio
-      await this.sound.play();
+      await this.sound.playAsync();
 
       // Set up completion handler
-      this.sound.addListener('playbackStatusUpdate', (status) => {
-        if (status.didJustFinish) {
-          this.sound?.remove();
+      this.sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          this.sound?.stopAsync();
+          this.sound?.unloadAsync();
           this.sound = null;
         }
       });
@@ -140,14 +156,24 @@ class AudioService {
 
     } catch (error) {
       console.error('Error playing audio:', error);
+      // Cleanup on error
+      if (this.sound) {
+        try {
+          await this.sound.unloadAsync();
+        } catch (cleanupError) {
+          console.error('Error cleaning up sound:', cleanupError);
+        }
+        this.sound = null;
+      }
+      throw error; // Re-throw to be handled by caller
     }
   }
 
   async stopAudio(): Promise<void> {
     try {
       if (this.sound) {
-        await this.sound.stop();
-        await this.sound.remove();
+        await this.sound.stopAsync();
+        await this.sound.unloadAsync();
         this.sound = null;
       }
     } catch (error) {
@@ -158,7 +184,7 @@ class AudioService {
   async pauseAudio(): Promise<void> {
     try {
       if (this.sound) {
-        await this.sound.pause();
+        await this.sound.pauseAsync();
       }
     } catch (error) {
       console.error('Error pausing audio:', error);
@@ -168,7 +194,7 @@ class AudioService {
   async resumeAudio(): Promise<void> {
     try {
       if (this.sound) {
-        await this.sound.play();
+        await this.sound.playAsync();
       }
     } catch (error) {
       console.error('Error resuming audio:', error);
@@ -226,16 +252,58 @@ class AudioService {
 
   // Pronunciation helper methods
   async playWordPronunciation(word: string, audioUrl?: string): Promise<void> {
-    if (audioUrl) {
-      await this.playAudioFromUrl(audioUrl);
-    } else {
-      // Fallback to text-to-speech
-      await this.speakWord(word);
+    try {
+      // audioUrlの有効性をチェック
+      if (audioUrl && audioUrl.trim().length > 0 && audioUrl !== 'undefined' && this.isValidAudioUrl(audioUrl)) {
+        // Try to play from audio URL first
+        console.log(`Playing pronunciation from URL: ${audioUrl}`);
+        await this.playAudioFromUrl(audioUrl);
+      } else {
+        // 無効なURLまたはURL無しの場合は直接Text-to-Speechを使用
+        console.log(`Using text-to-speech for word: ${word} (URL: ${audioUrl || 'none'})`);
+        await this.speakWord(word);
+      }
+    } catch (error) {
+      console.warn(`Audio URL failed for "${word}", falling back to text-to-speech:`, error);
+      // If audio URL fails, fallback to text-to-speech
+      try {
+        await this.speakWord(word);
+      } catch (ttsError) {
+        console.error('Text-to-speech also failed:', ttsError);
+        throw ttsError;
+      }
+    }
+  }
+
+  // URLの有効性をチェックするヘルパーメソッド
+  private isValidAudioUrl(url: string): boolean {
+    try {
+      // HTTPまたはHTTPS URLかチェック
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        new URL(url);
+        return true;
+      }
+      
+      // ローカルファイルパスの場合
+      if (url.startsWith('file://') || url.startsWith('./') || url.startsWith('/')) {
+        return true;
+      }
+      
+      // 音声ファイル拡張子をチェック
+      const audioExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.ogg'];
+      if (audioExtensions.some(ext => url.toLowerCase().includes(ext))) {
+        return true;
+      }
+      
+      // 上記のいずれでもない場合（例: "laɪv"のような発音記号）は無効
+      return false;
+    } catch {
+      return false;
     }
   }
 
   // Batch pronunciation for quiz mode
-  async preloadPronunciations(words: Array<{ word: string; audioUrl?: string }>): Promise<void> {
+  async preloadPronunciations(words: { word: string; audioUrl?: string }[]): Promise<void> {
     console.log(`Preloading pronunciations for ${words.length} words...`);
     
     for (const { word, audioUrl } of words) {

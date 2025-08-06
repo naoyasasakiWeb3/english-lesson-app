@@ -104,6 +104,30 @@ class DatabaseService {
       );
     `);
 
+    // Enriched vocabulary tables
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS enriched_bookmarks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT NOT NULL,
+        cefr_level TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS enriched_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT NOT NULL,
+        cefr_level TEXT NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        correct_attempts INTEGER DEFAULT 0,
+        mastery_level INTEGER DEFAULT 0,
+        last_attempt_date DATETIME,
+        is_weak BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Create indexes for better performance
     await this.db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_words_difficulty ON words(difficulty);
@@ -113,6 +137,8 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_cefr_words_level ON cefr_words(cefr_level);
       CREATE INDEX IF NOT EXISTS idx_cefr_words_word ON cefr_words(word);
       CREATE INDEX IF NOT EXISTS idx_word_details_word_id ON word_details(word_id);
+      CREATE INDEX IF NOT EXISTS idx_enriched_bookmarks_word_level ON enriched_bookmarks(word, cefr_level);
+      CREATE INDEX IF NOT EXISTS idx_enriched_progress_word_level ON enriched_progress(word, cefr_level);
     `);
   }
 
@@ -541,6 +567,162 @@ class DatabaseService {
     `);
     
     return result as Word[];
+  }
+
+  // Enriched vocabulary用のブックマーク・進捗管理メソッド
+  async toggleEnrichedWordBookmark(word: string, cefrLevel: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      console.log(`Toggling bookmark for enriched word: ${word} (${cefrLevel})`);
+      
+      // まず既存のブックマークを確認
+      const existing = await this.db.getFirstAsync(`
+        SELECT id FROM enriched_bookmarks 
+        WHERE word = ? AND cefr_level = ?
+      `, [word, cefrLevel]);
+
+      if (existing) {
+        // 既にブックマークされていれば削除
+        await this.db.runAsync(`
+          DELETE FROM enriched_bookmarks 
+          WHERE word = ? AND cefr_level = ?
+        `, [word, cefrLevel]);
+        console.log(`Removed bookmark for word: ${word} (${cefrLevel})`);
+      } else {
+        // ブックマークされていなければ追加
+        await this.db.runAsync(`
+          INSERT INTO enriched_bookmarks (word, cefr_level, created_at)
+          VALUES (?, ?, datetime('now'))
+        `, [word, cefrLevel]);
+        console.log(`Added bookmark for word: ${word} (${cefrLevel})`);
+      }
+      
+      // 確認のためブックマーク数を取得
+      const count = await this.db.getFirstAsync(`
+        SELECT COUNT(*) as count FROM enriched_bookmarks
+      `) as any;
+      console.log(`Total enriched bookmarks: ${count?.count || 0}`);
+      
+    } catch (error) {
+      console.error('Error toggling enriched word bookmark:', error);
+      throw error;
+    }
+  }
+
+  async isEnrichedWordBookmarked(word: string, cefrLevel: string): Promise<boolean> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      const result = await this.db.getFirstAsync(`
+        SELECT id FROM enriched_bookmarks 
+        WHERE word = ? AND cefr_level = ?
+      `, [word, cefrLevel]);
+      
+      return !!result;
+    } catch (error) {
+      console.error('Error checking enriched word bookmark:', error);
+      return false;
+    }
+  }
+
+  async getEnrichedBookmarkedWords(): Promise<{word: string; cefr_level: string; created_at: string}[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      const result = await this.db.getAllAsync(`
+        SELECT word, cefr_level, created_at
+        FROM enriched_bookmarks 
+        ORDER BY created_at DESC
+      `);
+      
+      return result as {word: string; cefr_level: string; created_at: string}[];
+    } catch (error) {
+      console.error('Error getting enriched bookmarked words:', error);
+      return [];
+    }
+  }
+
+  async updateEnrichedWordProgress(word: string, cefrLevel: string, isCorrect: boolean): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      console.log(`Updating progress for enriched word: ${word} (${cefrLevel}) - ${isCorrect ? 'correct' : 'incorrect'}`);
+      
+      // 既存の進捗レコードを確認
+      const existing = await this.db.getFirstAsync(`
+        SELECT * FROM enriched_progress 
+        WHERE word = ? AND cefr_level = ?
+      `, [word, cefrLevel]) as any;
+
+      if (existing) {
+        // 既存レコードを更新
+        const newAttempts = existing.attempts + 1;
+        const newCorrectAttempts = existing.correct_attempts + (isCorrect ? 1 : 0);
+        const newMasteryLevel = Math.min(100, Math.round((newCorrectAttempts / newAttempts) * 100));
+        
+        await this.db.runAsync(`
+          UPDATE enriched_progress 
+          SET attempts = ?, correct_attempts = ?, mastery_level = ?, 
+              last_attempt_date = datetime('now'), is_weak = ?
+          WHERE word = ? AND cefr_level = ?
+        `, [newAttempts, newCorrectAttempts, newMasteryLevel, newMasteryLevel < 60, word, cefrLevel]);
+        
+        console.log(`Updated progress: ${word} - attempts: ${newAttempts}, correct: ${newCorrectAttempts}, mastery: ${newMasteryLevel}%`);
+      } else {
+        // 新しいレコードを作成
+        const masteryLevel = isCorrect ? 100 : 0;
+        await this.db.runAsync(`
+          INSERT INTO enriched_progress 
+          (word, cefr_level, attempts, correct_attempts, mastery_level, last_attempt_date, is_weak)
+          VALUES (?, ?, 1, ?, ?, datetime('now'), ?)
+        `, [word, cefrLevel, isCorrect ? 1 : 0, masteryLevel, masteryLevel < 60]);
+        
+        console.log(`Created new progress record: ${word} - mastery: ${masteryLevel}%`);
+      }
+      
+      console.log(`Updated progress for word: ${word} (${isCorrect ? 'correct' : 'incorrect'})`);
+    } catch (error) {
+      console.error('Error updating enriched word progress:', error);
+      throw error;
+    }
+  }
+
+  async getEnrichedWeakWords(): Promise<Array<{word: string; cefr_level: string; attempts: number; correct_attempts: number; mastery_level: number}>> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      const result = await this.db.getAllAsync(`
+        SELECT word, cefr_level, attempts, correct_attempts, mastery_level
+        FROM enriched_progress 
+        WHERE is_weak = 1 
+        ORDER BY mastery_level ASC, last_attempt_date DESC
+        LIMIT 50
+      `);
+      
+      return result as Array<{word: string; cefr_level: string; attempts: number; correct_attempts: number; mastery_level: number}>;
+    } catch (error) {
+      console.error('Error getting enriched weak words:', error);
+      return [];
+    }
+  }
+
+  async removeEnrichedBookmark(word: string, cefrLevel: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      console.log(`Removing enriched bookmark: ${word} (${cefrLevel})`);
+      
+      await this.db.runAsync(`
+        DELETE FROM enriched_bookmarks 
+        WHERE word = ? AND cefr_level = ?
+      `, [word, cefrLevel]);
+      
+      console.log(`Successfully removed enriched bookmark: ${word} (${cefrLevel})`);
+    } catch (error) {
+      console.error('Error removing enriched bookmark:', error);
+      throw error;
+    }
   }
 
   // Study session operations

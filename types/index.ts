@@ -17,6 +17,7 @@ export interface QuizQuestion {
   definition?: string;
   example?: string;
   questionType?: 'definition' | 'synonym' | 'antonym' | 'example';
+  cefrLevel?: string; // CEFRレベル情報（A1, A2, B1等）
 }
 
 export interface WordData {

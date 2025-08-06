@@ -30,7 +30,8 @@ export default function QuizComponent() {
     nextQuestion, 
     previousQuestion,
     finishSession, 
-    bookmarkWord 
+    bookmarkWord,
+    bookmarkEnrichedWord
   } = useAppStore();
 
   const { playWord, isPlaying, settings } = useAudio();
@@ -140,9 +141,39 @@ export default function QuizComponent() {
   };
 
   const handleBookmark = async () => {
-    const wordId = parseInt(currentQuestion.id.split('-')[0]);
-    await bookmarkWord(wordId);
-    Alert.alert('Success', 'Word bookmarked for review!');
+    if (!currentSession || !currentQuestion) return;
+    
+    try {
+      if (currentSession.mode === 'random') {
+        // Enriched vocabulary system
+        const word = currentQuestion.word;
+        const cefrLevel = currentQuestion.cefrLevel || mapDifficultyToCefr(currentQuestion.difficulty);
+        console.log(`Bookmarking enriched word: ${word} (${cefrLevel})`);
+        await bookmarkEnrichedWord(word, cefrLevel);
+      } else {
+        // Legacy system
+        const wordId = parseInt(currentQuestion.id.split('-')[0]);
+        console.log(`Bookmarking legacy word: ${currentQuestion.word} (ID: ${wordId})`);
+        await bookmarkWord(wordId);
+      }
+      Alert.alert('Success', 'Word bookmarked for review!');
+    } catch (error) {
+      console.error('Error bookmarking word:', error);
+      Alert.alert('Error', 'Failed to bookmark word. Please try again.');
+    }
+  };
+
+  // Helper function to map difficulty to CEFR level
+  const mapDifficultyToCefr = (difficulty: number): string => {
+    switch (difficulty) {
+      case 1: return 'A1';
+      case 2: return 'A2';
+      case 3: return 'B1';
+      case 4: return 'B2';
+      case 5: return 'C1';
+      case 6: return 'C2';
+      default: return 'A2';
+    }
   };
 
   return (

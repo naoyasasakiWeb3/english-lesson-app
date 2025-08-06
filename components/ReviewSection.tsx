@@ -19,7 +19,9 @@ export default function ReviewSection() {
   const router = useRouter();
   const { startQuiz } = useAppStore();
   const [bookmarkedWords, setBookmarkedWords] = useState<Word[]>([]);
+  const [enrichedBookmarkedWords, setEnrichedBookmarkedWords] = useState<{word: string; cefr_level: string; created_at: string}[]>([]);
   const [weakWords, setWeakWords] = useState<Word[]>([]);
+  const [enrichedWeakWords, setEnrichedWeakWords] = useState<{word: string; cefr_level: string; attempts: number; correct_attempts: number; mastery_level: number}[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,12 +31,18 @@ export default function ReviewSection() {
   const loadReviewData = async () => {
     try {
       setLoading(true);
-      const [bookmarked, weak] = await Promise.all([
+      const [bookmarked, weak, enrichedBookmarked, enrichedWeak] = await Promise.all([
         databaseService.getBookmarkedWords(),
-        databaseService.getWeakWords()
+        databaseService.getWeakWords(),
+        databaseService.getEnrichedBookmarkedWords(),
+        databaseService.getEnrichedWeakWords()
       ]);
       setBookmarkedWords(bookmarked);
       setWeakWords(weak);
+      setEnrichedBookmarkedWords(enrichedBookmarked);
+      setEnrichedWeakWords(enrichedWeak);
+      
+      console.log(`Loaded review data: ${bookmarked.length} legacy bookmarked, ${enrichedBookmarked.length} enriched bookmarked, ${weak.length} legacy weak, ${enrichedWeak.length} enriched weak`);
     } catch (error) {
       console.error('Error loading review data:', error);
     } finally {
@@ -44,8 +52,11 @@ export default function ReviewSection() {
 
   const handleStartReview = async (mode: 'bookmarked' | 'weak') => {
     try {
-      const wordCount = mode === 'bookmarked' ? bookmarkedWords.length : weakWords.length;
-      if (wordCount === 0) {
+      const legacyWordCount = mode === 'bookmarked' ? bookmarkedWords.length : weakWords.length;
+      const enrichedWordCount = mode === 'bookmarked' ? enrichedBookmarkedWords.length : enrichedWeakWords.length;
+      const totalWordCount = legacyWordCount + enrichedWordCount;
+      
+      if (totalWordCount === 0) {
         Alert.alert(
           'No Words Available',
           mode === 'bookmarked' 
@@ -55,7 +66,8 @@ export default function ReviewSection() {
         return;
       }
       
-      await startQuiz(mode, Math.min(wordCount, 20));
+      console.log(`Starting ${mode} review with ${totalWordCount} words (${legacyWordCount} legacy + ${enrichedWordCount} enriched)`);
+      await startQuiz(mode, Math.min(totalWordCount, 20));
       router.push('/quiz');
     } catch (error) {
       Alert.alert('Error', 'Failed to start review. Please try again.');
@@ -69,6 +81,16 @@ export default function ReviewSection() {
       Alert.alert('Success', 'Bookmark removed');
     } catch (error) {
       Alert.alert('Error', 'Failed to remove bookmark');
+    }
+  };
+
+  const handleRemoveEnrichedBookmark = async (word: string, cefrLevel: string) => {
+    try {
+      await databaseService.removeEnrichedBookmark(word, cefrLevel);
+      await loadReviewData();
+      Alert.alert('Success', 'Enriched bookmark removed');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to remove enriched bookmark');
     }
   };
 
@@ -93,11 +115,11 @@ export default function ReviewSection() {
               </ThemedText>
             </View>
             <ThemedText style={styles.wordCount}>
-              {bookmarkedWords.length} words
+              {bookmarkedWords.length + enrichedBookmarkedWords.length} words
             </ThemedText>
           </View>
 
-          {bookmarkedWords.length > 0 ? (
+          {(bookmarkedWords.length + enrichedBookmarkedWords.length) > 0 ? (
             <>
               <ScrollView 
                 horizontal 
@@ -105,9 +127,10 @@ export default function ReviewSection() {
                 style={styles.wordsScroll}
                 contentContainerStyle={styles.wordsScrollContent}
               >
-                {bookmarkedWords.slice(0, 10).map((word, index) => (
+                {/* Legacy bookmarked words */}
+                {bookmarkedWords.slice(0, 5).map((word, index) => (
                   <Animated.View
-                    key={word.id}
+                    key={`legacy-${word.id}`}
                     entering={FadeInLeft.delay(200 + index * 100)}
                   >
                     <ModernCard
@@ -120,6 +143,32 @@ export default function ReviewSection() {
                       <ThemedText style={styles.definitionText} numberOfLines={2}>
                         {word.definition}
                       </ThemedText>
+                      <View style={styles.sourceBadge}>
+                        <ThemedText style={styles.sourceText}>Legacy</ThemedText>
+                      </View>
+                    </ModernCard>
+                  </Animated.View>
+                ))}
+                
+                {/* Enriched bookmarked words */}
+                {enrichedBookmarkedWords.slice(0, 5).map((word, index) => (
+                  <Animated.View
+                    key={`enriched-${word.word}-${word.cefr_level}`}
+                    entering={FadeInLeft.delay(200 + (bookmarkedWords.length + index) * 100)}
+                  >
+                    <ModernCard
+                      variant="glass"
+                      onPress={() => handleRemoveEnrichedBookmark(word.word, word.cefr_level)}
+                      style={styles.wordCard}
+                      glassEffect={true}
+                    >
+                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
+                      <ThemedText style={styles.definitionText} numberOfLines={2}>
+                        {word.cefr_level} level word
+                      </ThemedText>
+                      <View style={styles.cefrBadge}>
+                        <ThemedText style={styles.cefrText}>{word.cefr_level}</ThemedText>
+                      </View>
                     </ModernCard>
                   </Animated.View>
                 ))}
@@ -160,11 +209,11 @@ export default function ReviewSection() {
               </ThemedText>
             </View>
             <ThemedText style={styles.wordCount}>
-              {weakWords.length} words
+              {weakWords.length + enrichedWeakWords.length} words
             </ThemedText>
           </View>
 
-          {weakWords.length > 0 ? (
+          {(weakWords.length + enrichedWeakWords.length) > 0 ? (
             <>
               <ScrollView 
                 horizontal 
@@ -172,9 +221,10 @@ export default function ReviewSection() {
                 style={styles.wordsScroll}
                 contentContainerStyle={styles.wordsScrollContent}
               >
-                {weakWords.slice(0, 10).map((word, index) => (
+                {/* Legacy weak words */}
+                {weakWords.slice(0, 5).map((word, index) => (
                   <Animated.View
-                    key={word.id}
+                    key={`legacy-weak-${word.id}`}
                     entering={FadeInRight.delay(300 + index * 100)}
                   >
                     <ModernCard
@@ -191,6 +241,28 @@ export default function ReviewSection() {
                           {word.difficulty === 1 ? 'Easy' : 
                            word.difficulty === 2 ? 'Medium' : 'Hard'}
                         </ThemedText>
+                      </View>
+                    </ModernCard>
+                  </Animated.View>
+                ))}
+                
+                {/* Enriched weak words */}
+                {enrichedWeakWords.slice(0, 5).map((word, index) => (
+                  <Animated.View
+                    key={`enriched-weak-${word.word}-${word.cefr_level}`}
+                    entering={FadeInRight.delay(300 + (weakWords.length + index) * 100)}
+                  >
+                    <ModernCard
+                      variant="glass"
+                      style={styles.wordCard}
+                      glassEffect={true}
+                    >
+                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
+                      <ThemedText style={styles.definitionText} numberOfLines={2}>
+                        {word.mastery_level}% mastery ({word.correct_attempts}/{word.attempts})
+                      </ThemedText>
+                      <View style={styles.cefrBadge}>
+                        <ThemedText style={styles.cefrText}>{word.cefr_level}</ThemedText>
                       </View>
                     </ModernCard>
                   </Animated.View>
@@ -312,6 +384,32 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     flex: 1,
     fontWeight: '400',
+  },
+  sourceBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: Spacing.xs,
+  },
+  sourceText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  cefrBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: Spacing.xs,
+  },
+  cefrText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
   },
   difficultyBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
