@@ -2,8 +2,9 @@ import { Spacing } from '@/constants/ModernColors';
 import { databaseService } from '@/services/database';
 import { useAppStore } from '@/store/useAppStore';
 import { Word } from '@/types';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -27,6 +28,19 @@ export default function ReviewSection() {
   useEffect(() => {
     loadReviewData();
   }, []);
+
+  // 画面がフォーカスされたときにデータをリフレッシュ
+  useFocusEffect(
+    useCallback(() => {
+      console.log('ReviewSection focused - checking database status');
+      if (databaseService.isInitialized()) {
+        console.log('Database initialized - refreshing review data');
+        loadReviewData();
+      } else {
+        console.log('Database not yet initialized - skipping review data refresh');
+      }
+    }, [])
+  );
 
   const loadReviewData = async () => {
     try {

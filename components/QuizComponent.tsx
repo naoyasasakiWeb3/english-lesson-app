@@ -144,15 +144,28 @@ export default function QuizComponent() {
     if (!currentSession || !currentQuestion) return;
     
     try {
-      if (currentSession.mode === 'random') {
+      console.log(`Bookmark attempt - Question ID: ${currentQuestion.id}, Word: ${currentQuestion.word}, CEFR: ${currentQuestion.cefrLevel}, Difficulty: ${currentQuestion.difficulty}`);
+      
+      // CEFRレベルが設定されている、またはIDがenriched形式の場合はenriched word
+      const isEnrichedWord = currentQuestion.cefrLevel || currentQuestion.id.startsWith('enriched-');
+      
+      if (isEnrichedWord) {
         // Enriched vocabulary system
         const word = currentQuestion.word;
         const cefrLevel = currentQuestion.cefrLevel || mapDifficultyToCefr(currentQuestion.difficulty);
         console.log(`Bookmarking enriched word: ${word} (${cefrLevel})`);
         await bookmarkEnrichedWord(word, cefrLevel);
       } else {
-        // Legacy system
-        const wordId = parseInt(currentQuestion.id.split('-')[0]);
+        // Legacy system - IDから数値を抽出
+        const wordIdStr = currentQuestion.id.split('-')[0];
+        const wordId = parseInt(wordIdStr);
+        
+        if (isNaN(wordId)) {
+          console.error(`Invalid word ID format: ${currentQuestion.id}, parsed: ${wordIdStr}`);
+          Alert.alert('Error', 'Unable to bookmark this word due to invalid ID format.');
+          return;
+        }
+        
         console.log(`Bookmarking legacy word: ${currentQuestion.word} (ID: ${wordId})`);
         await bookmarkWord(wordId);
       }

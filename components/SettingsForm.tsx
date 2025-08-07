@@ -1,23 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Switch, 
-  Alert
-} from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { useForm, Controller } from 'react-hook-form';
-import { useRouter } from 'expo-router';
-import { ThemedText } from './ThemedText';
-import ModernCard from './layout/ModernCard';
-import ModernButton from './modern/ModernButton';
-import ApiKeyModal from './ApiKeyModal';
-import { useAppStore } from '@/store/useAppStore';
+import { Spacing } from '@/constants/ModernColors';
 import { useAudio } from '@/hooks/useAudio';
 import { useWordsApiKey } from '@/hooks/useWordsApi';
 import { databaseService } from '@/services/database';
-import { LearningGoals, DifficultyLevel } from '@/types';
-import { Spacing } from '@/constants/ModernColors';
+import { useAppStore } from '@/store/useAppStore';
+import { DifficultyLevel, LearningGoals } from '@/types';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
+import {
+    Alert,
+    StyleSheet,
+    Switch,
+    View
+} from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import ApiKeyModal from './ApiKeyModal';
+import { ThemedText } from './ThemedText';
+import ModernCard from './layout/ModernCard';
+import ModernButton from './modern/ModernButton';
 
 export default function SettingsForm() {
   const router = useRouter();
@@ -37,6 +38,20 @@ export default function SettingsForm() {
     loadUserLevel();
     loadLevelStats();
   }, []);
+
+  // 設定画面がフォーカスされたときにデータをリフレッシュ
+  useFocusEffect(
+    useCallback(() => {
+      console.log('SettingsForm focused - checking database status');
+      if (databaseService.isInitialized()) {
+        console.log('Database initialized - refreshing settings data');
+        loadUserLevel();
+        loadLevelStats();
+      } else {
+        console.log('Database not yet initialized - skipping settings data refresh');
+      }
+    }, [])
+  );
 
   const loadUserLevel = async () => {
     try {

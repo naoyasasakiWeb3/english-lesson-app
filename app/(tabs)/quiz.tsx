@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
-import { useAppStore } from '@/store/useAppStore';
-import { useWordsApiKey } from '@/hooks/useWordsApi';
+import ApiKeyModal from '@/components/ApiKeyModal';
 import QuizComponent from '@/components/QuizComponent';
 import QuizModeSelector from '@/components/QuizModeSelector';
 import ModernScreenLayout from '@/components/layout/ModernScreenLayout';
-import ApiKeyModal from '@/components/ApiKeyModal';
+import { useWordsApiKey } from '@/hooks/useWordsApi';
+import { databaseService } from '@/services/database';
+import { useAppStore } from '@/store/useAppStore';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 
 export default function QuizScreen() {
-  const { currentSession, isLoading, startQuiz, initialize } = useAppStore();
+  const { currentSession, isLoading, startQuiz, initialize, updateProgress } = useAppStore();
   const { status } = useWordsApiKey();
   const [selectedMode, setSelectedMode] = useState<'random' | 'review' | 'bookmarked' | 'weak'>('random');
   const [showApiModal, setShowApiModal] = useState(false);
@@ -16,6 +18,19 @@ export default function QuizScreen() {
   useEffect(() => {
     initialize();
   }, []);
+
+  // タブがアクティブになったときにデータをリフレッシュ
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Quiz tab focused - checking database status');
+      if (databaseService.isInitialized()) {
+        console.log('Database initialized - refreshing data');
+        updateProgress();
+      } else {
+        console.log('Database not yet initialized - skipping refresh');
+      }
+    }, [updateProgress])
+  );
 
   const handleStartQuiz = async (mode: 'random' | 'review' | 'bookmarked' | 'weak') => {
     try {

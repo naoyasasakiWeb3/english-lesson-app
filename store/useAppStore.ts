@@ -384,8 +384,10 @@ export const useAppStore = create<AppStore>()(
         const currentQuestion = currentSession.questions[currentSession.currentIndex];
         const isCorrect = answer === currentQuestion.correctAnswer;
         
-        // Enriched vocabulary systemかどうかを判定
-        if (currentSession.mode === 'random' && currentQuestion.word) {
+        // CEFRレベルが設定されている、またはIDがenriched形式の場合はenriched word
+        const isEnrichedWord = currentQuestion.cefrLevel || questionId.startsWith('enriched-');
+        
+        if (isEnrichedWord && currentQuestion.word) {
           // 新しいenriched vocabulary systemの場合
           const word = currentQuestion.word;
           // CEFRレベル情報を直接取得、なければdifficultyから逆算
@@ -401,8 +403,15 @@ export const useAppStore = create<AppStore>()(
           }
         } else {
           // 従来のシステムの場合
-          const wordId = parseInt(questionId.split('-')[0]);
-          await databaseService.updateUserProgress(wordId, isCorrect);
+          const wordIdStr = questionId.split('-')[0];
+          const wordId = parseInt(wordIdStr);
+          
+          if (isNaN(wordId)) {
+            console.error(`Invalid word ID format for progress update: ${questionId}`);
+            // エラーでも処理を続行（進捗更新だけ失敗）
+          } else {
+            await databaseService.updateUserProgress(wordId, isCorrect);
+          }
         }
 
         // セッションの回答を更新
@@ -507,6 +516,12 @@ export const useAppStore = create<AppStore>()(
       // 進捗更新
       updateProgress: async () => {
         try {
+          // データベースが初期化されていない場合は早期リターン
+          if (!databaseService.isInitialized()) {
+            console.log('Database not yet initialized, skipping progress update');
+            return;
+          }
+
           const todayStats = await databaseService.getTodayStats();
           
           // 週間データの取得

@@ -18,6 +18,11 @@ class DatabaseService {
     }
   }
 
+  // データベースの初期化状態をチェック
+  isInitialized(): boolean {
+    return this.db !== null;
+  }
+
   private async createTables(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
@@ -688,7 +693,7 @@ class DatabaseService {
     }
   }
 
-  async getEnrichedWeakWords(): Promise<Array<{word: string; cefr_level: string; attempts: number; correct_attempts: number; mastery_level: number}>> {
+  async getEnrichedWeakWords(): Promise<{word: string; cefr_level: string; attempts: number; correct_attempts: number; mastery_level: number}[]> {
     if (!this.db) throw new Error('Database not initialized');
     
     try {
@@ -700,7 +705,7 @@ class DatabaseService {
         LIMIT 50
       `);
       
-      return result as Array<{word: string; cefr_level: string; attempts: number; correct_attempts: number; mastery_level: number}>;
+      return result as {word: string; cefr_level: string; attempts: number; correct_attempts: number; mastery_level: number}[];
     } catch (error) {
       console.error('Error getting enriched weak words:', error);
       return [];
