@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
 export default function QuizScreen() {
-  const { currentSession, isLoading, startQuiz, initialize, updateProgress } = useAppStore();
+  const { currentSession, isLoading, startQuiz, initialize, updateProgress, cancelQuiz } = useAppStore();
   const { status } = useWordsApiKey();
   const [selectedMode, setSelectedMode] = useState<'random' | 'review' | 'bookmarked' | 'weak'>('random');
   const [showApiModal, setShowApiModal] = useState(false);
@@ -19,7 +19,7 @@ export default function QuizScreen() {
     initialize();
   }, []);
 
-  // タブがアクティブになったときにデータをリフレッシュ
+  // タブがアクティブになったときにデータをリフレッシュのみ実行
   useFocusEffect(
     useCallback(() => {
       console.log('Quiz tab focused - checking database status');

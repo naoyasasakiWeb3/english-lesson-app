@@ -671,7 +671,7 @@ class DatabaseService {
           SET attempts = ?, correct_attempts = ?, mastery_level = ?, 
               last_attempt_date = datetime('now'), is_weak = ?
           WHERE word = ? AND cefr_level = ?
-        `, [newAttempts, newCorrectAttempts, newMasteryLevel, newMasteryLevel < 60, word, cefrLevel]);
+        `, [newAttempts, newCorrectAttempts, newMasteryLevel, newMasteryLevel <= 30, word, cefrLevel]);
         
         console.log(`Updated progress: ${word} - attempts: ${newAttempts}, correct: ${newCorrectAttempts}, mastery: ${newMasteryLevel}%`);
       } else {
@@ -681,7 +681,7 @@ class DatabaseService {
           INSERT INTO enriched_progress 
           (word, cefr_level, attempts, correct_attempts, mastery_level, last_attempt_date, is_weak)
           VALUES (?, ?, 1, ?, ?, datetime('now'), ?)
-        `, [word, cefrLevel, isCorrect ? 1 : 0, masteryLevel, masteryLevel < 60]);
+        `, [word, cefrLevel, isCorrect ? 1 : 0, masteryLevel, masteryLevel <= 30]);
         
         console.log(`Created new progress record: ${word} - mastery: ${masteryLevel}%`);
       }
@@ -700,7 +700,7 @@ class DatabaseService {
       const result = await this.db.getAllAsync(`
         SELECT word, cefr_level, attempts, correct_attempts, mastery_level
         FROM enriched_progress 
-        WHERE is_weak = 1 
+        WHERE is_weak = 1
         ORDER BY mastery_level ASC, last_attempt_date DESC
         LIMIT 50
       `);
@@ -709,6 +709,20 @@ class DatabaseService {
     } catch (error) {
       console.error('Error getting enriched weak words:', error);
       return [];
+    }
+  }
+
+  async removeEnrichedWeakWord(word: string, cefrLevel: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    try {
+      await this.db.runAsync(`
+        UPDATE enriched_progress 
+        SET is_weak = 0
+        WHERE word = ? AND cefr_level = ?
+      `, [word, cefrLevel]);
+    } catch (error) {
+      console.error('Error removing enriched weak word:', error);
+      throw error;
     }
   }
 

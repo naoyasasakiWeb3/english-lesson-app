@@ -3,7 +3,7 @@ import { useAudio } from '@/hooks/useAudio';
 import { useAppStore } from '@/store/useAppStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -24,6 +24,7 @@ import ModernButton from './modern/ModernButton';
 
 export default function QuizComponent() {
   const router = useRouter();
+  const scrollViewRef = useRef<ScrollView>(null);
   const { 
     currentSession, 
     submitAnswer, 
@@ -31,7 +32,8 @@ export default function QuizComponent() {
     previousQuestion,
     finishSession, 
     bookmarkWord,
-    bookmarkEnrichedWord
+    bookmarkEnrichedWord,
+    cancelQuiz
   } = useAppStore();
 
   const { playWord, isPlaying, settings } = useAudio();
@@ -95,6 +97,41 @@ export default function QuizComponent() {
     await submitAnswer(currentQuestion.id, answer);
   };
 
+  const handleExitQuiz = () => {
+    Alert.alert(
+      'Exit Quiz',
+      'Are you sure you want to exit the quiz? Your progress will be lost.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Exit',
+          style: 'destructive',
+          onPress: () => {
+            console.log('User manually exited quiz');
+            cancelQuiz();
+          }
+        }
+      ]
+    );
+  };
+
+  // Helper function to map difficulty to CEFR level
+  const mapDifficultyToCefr = (difficulty: number): string => {
+    switch (difficulty) {
+      case 1: return 'A1';
+      case 2: return 'A2';
+      case 3: return 'B1';
+      case 4: return 'B2';
+      case 5: return 'C1';
+      case 6: return 'C2';
+      default: return 'A2';
+    }
+  };
+
+  // 次の問題へ移動（スクロールトップ付き）
   const handleNext = () => {
     if (isLastQuestion) {
       handleFinish();
@@ -107,10 +144,15 @@ export default function QuizComponent() {
       // 状態の更新が完了した後で次の問題に移行
       Promise.resolve().then(() => {
         nextQuestion();
+        // 画面を最上部にスクロール
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+        }, 100);
       });
     }
   };
 
+  // 前の問題へ移動（スクロールトップ付き）
   const handleBack = () => {
     if (currentSession.currentIndex > 0) {
       // Reset state for previous question
@@ -121,23 +163,22 @@ export default function QuizComponent() {
       // Go to previous question
       Promise.resolve().then(() => {
         previousQuestion();
+        // 画面を最上部にスクロール
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+        }, 100);
       });
     }
   };
 
   const handleFinish = async () => {
-    await finishSession();
-    
-    // Show results summary
-    const correctCount = currentSession.answers.filter(Boolean).length;
-    const totalCount = currentSession.questions.length;
-    const accuracy = Math.round((correctCount / totalCount) * 100);
-
-    Alert.alert(
-      'Quiz Complete!',
-      `You got ${correctCount} out of ${totalCount} questions correct (${accuracy}%)`,
-      [{ text: 'OK', onPress: () => router.push('/') }]
-    );
+    try {
+      await finishSession();
+      router.push('/(tabs)');
+    } catch (error) {
+      console.error('Error finishing session:', error);
+      Alert.alert('Error', 'Failed to finish quiz. Please try again.');
+    }
   };
 
   const handleBookmark = async () => {
@@ -176,19 +217,6 @@ export default function QuizComponent() {
     }
   };
 
-  // Helper function to map difficulty to CEFR level
-  const mapDifficultyToCefr = (difficulty: number): string => {
-    switch (difficulty) {
-      case 1: return 'A1';
-      case 2: return 'A2';
-      case 3: return 'B1';
-      case 4: return 'B2';
-      case 5: return 'C1';
-      case 6: return 'C2';
-      default: return 'A2';
-    }
-  };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <LinearGradient
@@ -199,6 +227,7 @@ export default function QuizComponent() {
       >
         <View style={styles.container}>
           <ScrollView 
+            ref={scrollViewRef}
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
@@ -355,6 +384,15 @@ export default function QuizComponent() {
                 size="md"
                 icon="📖"
                 style={styles.modernBookmarkButton}
+              />
+
+              <ModernButton
+                title="Cancel Quiz"
+                onPress={handleExitQuiz}
+                variant="error"
+                size="md"
+                icon="❌"
+                style={styles.modernCancelButton}
               />
 
               {showResult && isLastQuestion && (
@@ -547,5 +585,9 @@ const styles = StyleSheet.create({
   },
   navButton: {
     flex: 1,
+  },
+  modernCancelButton: {
+    width: '100%',
+    maxWidth: 500,
   },
 });

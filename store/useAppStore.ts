@@ -37,6 +37,7 @@ interface AppStore {
   nextQuestion: () => void;
   previousQuestion: () => void;
   finishSession: () => Promise<void>;
+  cancelQuiz: () => void; // クイズキャンセル機能を追加
   bookmarkWord: (wordId: number) => Promise<void>;
   bookmarkEnrichedWord: (word: string, cefrLevel: string) => Promise<void>;
   updateProgress: () => Promise<void>;
@@ -493,6 +494,11 @@ export const useAppStore = create<AppStore>()(
 
         // 進捗を更新
         await get().updateProgress();
+      },
+
+      // クイズキャンセル
+      cancelQuiz: () => {
+        set({ currentSession: null });
       },
 
       // 単語ブックマーク
