@@ -53,6 +53,10 @@ export default function ReviewSection() {
     | null
   >(null);
   const [enrichedDefinitionMap, setEnrichedDefinitionMap] = useState<Record<string, string>>({});
+  const [bookmarkedPage, setBookmarkedPage] = useState(0);
+  const [challengingPage, setChallengingPage] = useState(0);
+  const [listVisible, setListVisible] = useState(false);
+  const [listType, setListType] = useState<'bookmarked' | 'challenging' | null>(null);
 
   useEffect(() => {
     loadReviewData();
@@ -185,25 +189,7 @@ export default function ReviewSection() {
     }
   };
 
-  const handleRemoveBookmark = async (wordId: number) => {
-    try {
-      await databaseService.toggleBookmark(wordId);
-      await loadReviewData();
-      Alert.alert('Success', 'Bookmark removed');
-    } catch {
-      Alert.alert('Error', 'Failed to remove bookmark');
-    }
-  };
-
-  const handleRemoveEnrichedBookmark = async (word: string, cefrLevel: string) => {
-    try {
-      await databaseService.removeEnrichedBookmark(word, cefrLevel);
-      await loadReviewData();
-      Alert.alert('Success', 'Enriched bookmark removed');
-    } catch {
-      Alert.alert('Error', 'Failed to remove enriched bookmark');
-    }
-  };
+  // Note: remove handlers are now inlined in the detail modal buttons
 
   if (loading) {
     return (
@@ -225,75 +211,105 @@ export default function ReviewSection() {
                 Bookmarked Words
               </ThemedText>
             </View>
-            <ThemedText style={styles.wordCount}>
-              {bookmarkedWords.length + enrichedBookmarkedWords.length} words
-            </ThemedText>
+            <Pressable onPress={() => { setListType('bookmarked'); setListVisible(true); }}>
+              <ThemedText style={styles.wordCount}>
+                {bookmarkedWords.length + enrichedBookmarkedWords.length} words
+              </ThemedText>
+            </Pressable>
           </View>
 
           {(bookmarkedWords.length + enrichedBookmarkedWords.length) > 0 ? (
             <>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                style={styles.wordsScroll}
-                contentContainerStyle={styles.wordsScrollContent}
-              >
-                {/* Legacy bookmarked words */}
-                {bookmarkedWords.slice(0, 5).map((word, index) => (
-                  <Animated.View
-                    key={`legacy-${word.id}`}
-                    entering={FadeInLeft.delay(200 + index * 100)}
-                  >
-                    <ModernCard
-                      variant="glass"
-                      onPress={() => openLegacyDetail(word)}
-                      style={styles.wordCard}
-                      glassEffect={true}
+              {/* Bookmarked pagination (10 per page) */}
+              {(() => {
+                const combined = [
+                  ...bookmarkedWords.map(w => ({
+                    key: `legacy-${w.id}`,
+                    type: 'legacy' as const,
+                    word: w.word,
+                    definition: w.definition,
+                    cefr: undefined as string | undefined,
+                    legacy: w,
+                  })),
+                  ...enrichedBookmarkedWords.map(w => ({
+                    key: `enriched-${w.word}-${w.cefr_level}`,
+                    type: 'enriched' as const,
+                    word: w.word,
+                    definition: enrichedDefinitionMap[`${w.word}|${w.cefr_level}`] || `${w.cefr_level} level word`,
+                    cefr: w.cefr_level,
+                    legacy: undefined,
+                  })),
+                ];
+                const pageSize = 10;
+                const totalPages = Math.max(1, Math.ceil(combined.length / pageSize));
+                const page = Math.min(bookmarkedPage, totalPages - 1);
+                const pageItems = combined.slice(page * pageSize, page * pageSize + pageSize);
+                return (
+                  <>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.wordsScroll}
+                      contentContainerStyle={styles.wordsScrollContent}
                     >
-                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
-                      <ThemedText style={styles.definitionText} numberOfLines={2}>
-                        {word.definition}
-                      </ThemedText>
-                      <View style={styles.sourceBadge}>
-                        <ThemedText style={styles.sourceText}>Legacy</ThemedText>
+                      {pageItems.map((item, idx) => (
+                        <Animated.View key={item.key} entering={FadeInLeft.delay(200 + idx * 80)}>
+                          <ModernCard
+                            variant="glass"
+                            onPress={() => item.type === 'legacy' ? openLegacyDetail(item.legacy!) : openEnrichedDetail(item.word, item.cefr!)}
+                            style={styles.wordCard}
+                            glassEffect={true}
+                          >
+                            <ThemedText style={styles.wordText}>{item.word}</ThemedText>
+                            <ThemedText style={styles.definitionText} numberOfLines={2}>
+                              {item.definition}
+                            </ThemedText>
+                            <View style={item.cefr ? styles.cefrBadge : styles.sourceBadge}>
+                              <ThemedText style={item.cefr ? styles.cefrText : styles.sourceText}>
+                                {item.cefr || 'Legacy'}
+                              </ThemedText>
+                            </View>
+                          </ModernCard>
+                        </Animated.View>
+                      ))}
+                    </ScrollView>
+                    {combined.length > pageSize && (
+                      <View style={styles.paginationRow}>
+                        <ModernButton
+                          title="Prev"
+                          onPress={() => setBookmarkedPage(Math.max(0, page - 1))}
+                          variant="secondary"
+                          size="sm"
+                          style={styles.paginationButton}
+                        />
+                        <ThemedText style={styles.paginationText}>{page + 1} / {totalPages}</ThemedText>
+                        <ModernButton
+                          title="Next"
+                          onPress={() => setBookmarkedPage(Math.min(totalPages - 1, page + 1))}
+                          variant="secondary"
+                          size="sm"
+                          style={styles.paginationButton}
+                        />
                       </View>
-                    </ModernCard>
-                  </Animated.View>
-                ))}
-                
-                {/* Enriched bookmarked words */}
-                {enrichedBookmarkedWords.slice(0, 5).map((word, index) => (
-                  <Animated.View
-                    key={`enriched-${word.word}-${word.cefr_level}`}
-                    entering={FadeInLeft.delay(200 + (bookmarkedWords.length + index) * 100)}
-                  >
-                    <ModernCard
-                      variant="glass"
-                      onPress={() => openEnrichedDetail(word.word, word.cefr_level)}
-                      style={styles.wordCard}
-                      glassEffect={true}
-                    >
-                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
-                      <ThemedText style={styles.definitionText} numberOfLines={2}>
-                        {enrichedDefinitionMap[`${word.word}|${word.cefr_level}`] || `${word.cefr_level} level word`}
-                      </ThemedText>
-                      <View style={styles.cefrBadge}>
-                        <ThemedText style={styles.cefrText}>{word.cefr_level}</ThemedText>
-                      </View>
-                    </ModernCard>
-                  </Animated.View>
-                ))}
-              </ScrollView>
+                    )}
+                  </>
+                );
+              })()}
 
               <Animated.View entering={FadeInDown.delay(400)}>
-                <ModernButton
-                  title="Review Bookmarked Words"
-                  onPress={() => handleStartReview('bookmarked')}
-                  variant="secondary"
-                  size="lg"
-                  icon="⭐"
-                  style={styles.reviewButton}
-                />
+                  <ModernButton
+                    title="Review Bookmarked Words"
+                    onPress={() => handleStartReview('bookmarked')}
+                    variant="secondary"
+                    size="lg"
+                    icon="⭐"
+                    style={styles.reviewButton}
+                  />
+                  <View style={styles.paginationInfoRow}>
+                    <ThemedText style={styles.paginationInfoText}>
+                      Total: {bookmarkedWords.length + enrichedBookmarkedWords.length}
+                    </ThemedText>
+                  </View>
               </Animated.View>
             </>
           ) : (
@@ -319,67 +335,90 @@ export default function ReviewSection() {
                 Challenging Words
               </ThemedText>
             </View>
-            <ThemedText style={styles.wordCount}>
-              {weakWords.length + enrichedWeakWords.length} words
-            </ThemedText>
+            <Pressable onPress={() => { setListType('challenging'); setListVisible(true); }}>
+              <ThemedText style={styles.wordCount}>
+                {weakWords.length + enrichedWeakWords.length} words
+              </ThemedText>
+            </Pressable>
           </View>
 
           {(weakWords.length + enrichedWeakWords.length) > 0 ? (
             <>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                style={styles.wordsScroll}
-                contentContainerStyle={styles.wordsScrollContent}
-              >
-                {/* Legacy weak words */}
-                {weakWords.slice(0, 5).map((word, index) => (
-                  <Animated.View
-                    key={`legacy-weak-${word.id}`}
-                    entering={FadeInRight.delay(300 + index * 100)}
-                  >
-                    <ModernCard
-                      variant="glass"
-                      style={styles.wordCard}
-                      glassEffect={true}
+              {(() => {
+                const combined = [
+                  ...weakWords.map(w => ({
+                    key: `legacy-weak-${w.id}`,
+                    type: 'legacy' as const,
+                    word: w.word,
+                    definition: w.definition,
+                    cefr: undefined as string | undefined,
+                    legacy: w,
+                  })),
+                  ...enrichedWeakWords.map(w => ({
+                    key: `enriched-weak-${w.word}-${w.cefr_level}`,
+                    type: 'enriched' as const,
+                    word: w.word,
+                    definition: enrichedDefinitionMap[`${w.word}|${w.cefr_level}`] || `${w.cefr_level} level word`,
+                    cefr: w.cefr_level,
+                    legacy: undefined,
+                    stats: { attempts: w.attempts, correctAttempts: w.correct_attempts, masteryLevel: w.mastery_level }
+                  })),
+                ];
+                const pageSize = 10;
+                const totalPages = Math.max(1, Math.ceil(combined.length / pageSize));
+                const page = Math.min(challengingPage, totalPages - 1);
+                const pageItems = combined.slice(page * pageSize, page * pageSize + pageSize);
+                return (
+                  <>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.wordsScroll}
+                      contentContainerStyle={styles.wordsScrollContent}
                     >
-                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
-                      <ThemedText style={styles.definitionText} numberOfLines={2}>
-                        {word.definition}
-                      </ThemedText>
-                      <View style={styles.difficultyBadge}>
-                        <ThemedText style={styles.difficultyText}>
-                          {word.difficulty === 1 ? 'Easy' : 
-                           word.difficulty === 2 ? 'Medium' : 'Hard'}
-                        </ThemedText>
+                      {pageItems.map((item, idx) => (
+                        <Animated.View key={item.key} entering={FadeInRight.delay(300 + idx * 80)}>
+                          <ModernCard
+                            variant="glass"
+                            onPress={() => item.type === 'legacy' ? undefined : openEnrichedDetail(item.word, item.cefr!, item.stats)}
+                            style={styles.wordCard}
+                            glassEffect={true}
+                          >
+                            <ThemedText style={styles.wordText}>{item.word}</ThemedText>
+                            <ThemedText style={styles.definitionText} numberOfLines={2}>
+                              {item.definition}
+                            </ThemedText>
+                            <View style={item.cefr ? styles.cefrBadge : styles.difficultyBadge}>
+                              <ThemedText style={item.cefr ? styles.cefrText : styles.difficultyText}>
+                                {item.cefr || (item.legacy?.difficulty === 1 ? 'Easy' : item.legacy?.difficulty === 2 ? 'Medium' : 'Hard')}
+                              </ThemedText>
+                            </View>
+                          </ModernCard>
+                        </Animated.View>
+                      ))}
+                    </ScrollView>
+                    {combined.length > pageSize && (
+                      <View style={styles.paginationRow}>
+                        <ModernButton
+                          title="Prev"
+                          onPress={() => setChallengingPage(Math.max(0, page - 1))}
+                          variant="secondary"
+                          size="sm"
+                          style={styles.paginationButton}
+                        />
+                        <ThemedText style={styles.paginationText}>{page + 1} / {totalPages}</ThemedText>
+                        <ModernButton
+                          title="Next"
+                          onPress={() => setChallengingPage(Math.min(totalPages - 1, page + 1))}
+                          variant="secondary"
+                          size="sm"
+                          style={styles.paginationButton}
+                        />
                       </View>
-                    </ModernCard>
-                  </Animated.View>
-                ))}
-                
-                {/* Enriched weak words */}
-                {enrichedWeakWords.slice(0, 5).map((word, index) => (
-                  <Animated.View
-                    key={`enriched-weak-${word.word}-${word.cefr_level}`}
-                    entering={FadeInRight.delay(300 + (weakWords.length + index) * 100)}
-                  >
-                    <ModernCard
-                      variant="glass"
-                      onPress={() => openEnrichedDetail(word.word, word.cefr_level, { attempts: word.attempts, correctAttempts: word.correct_attempts, masteryLevel: word.mastery_level })}
-                      style={styles.wordCard}
-                      glassEffect={true}
-                    >
-                      <ThemedText style={styles.wordText}>{word.word}</ThemedText>
-                      <ThemedText style={styles.definitionText} numberOfLines={2}>
-                        {enrichedDefinitionMap[`${word.word}|${word.cefr_level}`] || `${word.cefr_level} level word`}
-                      </ThemedText>
-                      <View style={styles.cefrBadge}>
-                        <ThemedText style={styles.cefrText}>{word.cefr_level}</ThemedText>
-                      </View>
-                    </ModernCard>
-                  </Animated.View>
-                ))}
-              </ScrollView>
+                    )}
+                  </>
+                );
+              })()}
 
               <Animated.View entering={FadeInDown.delay(500)}>
                 <ModernButton
@@ -435,7 +474,8 @@ export default function ReviewSection() {
       </Animated.View>
       {/* Detail Modal */}
       <Modal visible={detailVisible} transparent animationType="fade" onRequestClose={() => setDetailVisible(false)}>
-        <Pressable style={styles.detailOverlay} onPress={() => setDetailVisible(false)}>
+        <View style={styles.detailOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setDetailVisible(false)} />
           <Animated.View entering={FadeInDown.delay(50)} style={styles.detailSheet}>
             {detailData && (
               <>
@@ -489,14 +529,26 @@ export default function ReviewSection() {
                   <ModernButton
                     title={'attempts' in detailData ? 'Remove Challenging Word' : 'Remove Bookmark'}
                     onPress={async () => {
-                      if ('attempts' in detailData) {
-                        // challenging（weak）単語としての解除
-                        await databaseService.removeEnrichedWeakWord(detailData.word, detailData.cefr);
+                      try {
+                        console.log('[ReviewSection] Remove button tapped for enriched', {
+                          word: detailData.word,
+                          cefr: detailData.cefr,
+                          mode: 'attempts' in detailData ? 'challenging' : 'bookmarked'
+                        });
+                        if ('attempts' in detailData) {
+                          await databaseService.toggleEnrichedWordBookmark(detailData.word, detailData.cefr);
+                          console.log('[ReviewSection] removeEnrichedWeakWord completed');
+                        } else {
+                          await databaseService.toggleEnrichedWordBookmark(detailData.word, detailData.cefr);
+                          console.log('[ReviewSection] removeEnrichedBookmark completed');
+                        }
                         await loadReviewData();
-                      } else {
-                        await handleRemoveEnrichedBookmark(detailData.word, detailData.cefr);
+                        console.log('[ReviewSection] Data reloaded after removal');
+                        setDetailVisible(false);
+                      } catch (err) {
+                        console.error('[ReviewSection] Error during removal:', err);
+                        Alert.alert('Error', 'Failed to remove. Please try again.');
                       }
-                      setDetailVisible(false);
                     }}
                     variant="error"
                     size="md"
@@ -507,12 +559,22 @@ export default function ReviewSection() {
                   <ModernButton
                     title="Remove Bookmark"
                     onPress={async () => {
-                      // legacy の場合はIDが無いので検索
-                      const target = bookmarkedWords.find(w => w.word === detailData.word);
-                      if (target) {
-                        await handleRemoveBookmark(target.id);
+                      try {
+                        const target = bookmarkedWords.find(w => w.word === detailData.word);
+                        console.log('[ReviewSection] Legacy remove tapped', { word: detailData.word, targetId: target?.id });
+                        if (target) {
+                          await databaseService.toggleBookmark(target.id);
+                          console.log('[ReviewSection] toggleBookmark completed');
+                          await loadReviewData();
+                          console.log('[ReviewSection] Data reloaded after legacy removal');
+                        } else {
+                          console.warn('[ReviewSection] Legacy remove failed: target not found');
+                        }
+                        setDetailVisible(false);
+                      } catch (err) {
+                        console.error('[ReviewSection] Error during legacy removal:', err);
+                        Alert.alert('Error', 'Failed to remove bookmark.');
                       }
-                      setDetailVisible(false);
                     }}
                     variant="error"
                     size="md"
@@ -523,7 +585,42 @@ export default function ReviewSection() {
               </>
             )}
           </Animated.View>
-        </Pressable>
+        </View>
+      </Modal>
+
+      {/* Word List Modal (Bookmarked / Challenging) */}
+      <Modal visible={listVisible} transparent animationType="fade" onRequestClose={() => setListVisible(false)}>
+        <View style={styles.detailOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setListVisible(false)} />
+          <Animated.View entering={FadeInDown.delay(50)} style={styles.detailSheet}>
+            <ThemedText style={styles.detailTitle}>
+              {listType === 'bookmarked' ? 'Bookmarked Words' : 'Challenging Words'}
+            </ThemedText>
+            <ScrollView style={styles.listScroll} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={true}>
+              {(() => {
+                const words = listType === 'bookmarked'
+                  ? [
+                      ...bookmarkedWords.map(w => w.word),
+                      ...enrichedBookmarkedWords.map(w => w.word),
+                    ]
+                  : [
+                      ...weakWords.map(w => w.word),
+                      ...enrichedWeakWords.map(w => w.word),
+                    ];
+                if (words.length === 0) {
+                  return <ThemedText style={styles.detailText}>No words</ThemedText>;
+                }
+                return (
+                  <View style={styles.listItemsWrapper}>
+                    {words.map((w, idx) => (
+                      <ThemedText key={`${listType}-w-${idx}`} style={styles.listItem}>• {w}</ThemedText>
+                    ))}
+                  </View>
+                );
+              })()}
+            </ScrollView>
+          </Animated.View>
+        </View>
       </Modal>
     </View>
   );
@@ -672,6 +769,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
     borderRadius: 16,
     padding: Spacing.md,
+    maxHeight: '70%',
   },
   detailTitle: {
     fontSize: 20,
@@ -700,5 +798,43 @@ const styles = StyleSheet.create({
   },
   detailRemoveButton: {
     marginTop: Spacing.md,
+  },
+  listScroll: {
+    maxHeight: '100%',
+  },
+  listContent: {
+    paddingBottom: Spacing.md,
+  },
+  listItemsWrapper: {
+    paddingBottom: Spacing.sm,
+    gap: 6,
+  },
+  listItem: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.95)',
+    lineHeight: 22,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  paginationButton: {
+    minWidth: 100,
+  },
+  paginationText: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  paginationInfoRow: {
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+  },
+  paginationInfoText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
   },
 });

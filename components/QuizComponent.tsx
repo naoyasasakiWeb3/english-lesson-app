@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +42,10 @@ export default function QuizComponent() {
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [summaryCorrectWords, setSummaryCorrectWords] = useState<string[]>([]);
+  const [summaryIncorrectWords, setSummaryIncorrectWords] = useState<string[]>([]);
+  const [summaryAccuracy, setSummaryAccuracy] = useState<number>(0);
 
   // Auto-play pronunciation when question changes and auto-play is enabled
   useEffect(() => {
@@ -173,7 +178,29 @@ export default function QuizComponent() {
 
   const handleFinish = async () => {
     try {
+      if (!currentSession) return;
+      const correct: string[] = [];
+      const incorrect: string[] = [];
+      for (let i = 0; i < currentSession.questions.length; i++) {
+        const q = currentSession.questions[i];
+        const wasCorrect = !!currentSession.answers[i];
+        if (wasCorrect) correct.push(q.word); else incorrect.push(q.word);
+      }
+      const accuracy = Math.round((correct.length / currentSession.questions.length) * 100);
+      setSummaryCorrectWords(correct);
+      setSummaryIncorrectWords(incorrect);
+      setSummaryAccuracy(accuracy);
+      setShowSummary(true);
+    } catch (error) {
+      console.error('Error preparing summary:', error);
+      Alert.alert('Error', 'Failed to prepare results.');
+    }
+  };
+
+  const handleConfirmFinish = async () => {
+    try {
       await finishSession();
+      setShowSummary(false);
       router.push('/(tabs)');
     } catch (error) {
       console.error('Error finishing session:', error);
@@ -409,6 +436,51 @@ export default function QuizComponent() {
           </ScrollView>
         </View>
       </LinearGradient>
+
+      {/* Result Summary Modal */}
+      <Modal visible={showSummary} transparent animationType="fade" onRequestClose={() => setShowSummary(false)}>
+        <Pressable style={styles.summaryOverlay} onPress={() => setShowSummary(false)}>
+          <Animated.View entering={FadeInDown.delay(50)} style={styles.summarySheet}>
+            <ThemedText style={styles.summaryTitle}>Results</ThemedText>
+            <View style={styles.summaryBlock}>
+              <ThemedText style={styles.summaryLabel}>Accuracy</ThemedText>
+              <ThemedText style={styles.summaryText}>{summaryAccuracy}% ({summaryCorrectWords.length}/{summaryCorrectWords.length + summaryIncorrectWords.length})</ThemedText>
+            </View>
+            <View style={styles.summaryBlock}>
+              <ThemedText style={styles.summaryLabel}>Correct Answers</ThemedText>
+              <View style={styles.summaryList}>
+                {summaryCorrectWords.length === 0 ? (
+                  <ThemedText style={styles.summaryText}>None</ThemedText>
+                ) : (
+                  summaryCorrectWords.map((w, idx) => (
+                    <ThemedText key={`c-${idx}`} style={styles.summaryItem}>• {w}</ThemedText>
+                  ))
+                )}
+              </View>
+            </View>
+            <View style={styles.summaryBlock}>
+              <ThemedText style={styles.summaryLabel}>Incorrect Answers</ThemedText>
+              <View style={styles.summaryList}>
+                {summaryIncorrectWords.length === 0 ? (
+                  <ThemedText style={styles.summaryText}>None</ThemedText>
+                ) : (
+                  summaryIncorrectWords.map((w, idx) => (
+                    <ThemedText key={`i-${idx}`} style={styles.summaryItem}>• {w}</ThemedText>
+                  ))
+                )}
+              </View>
+            </View>
+            <ModernButton
+              title="Done"
+              onPress={handleConfirmFinish}
+              variant="primary"
+              size="lg"
+              icon="✅"
+              style={styles.summaryDoneButton}
+            />
+          </Animated.View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -589,5 +661,49 @@ const styles = StyleSheet.create({
   modernCancelButton: {
     width: '100%',
     maxWidth: 500,
+  },
+  summaryOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  summarySheet: {
+    width: '92%',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 16,
+    padding: Spacing.md,
+  },
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  summaryBlock: {
+    marginBottom: Spacing.md,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 4,
+    fontWeight: '700',
+  },
+  summaryText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.95)',
+    lineHeight: 20,
+  },
+  summaryList: {
+    gap: 4,
+  },
+  summaryItem: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.95)',
+    lineHeight: 20,
+  },
+  summaryDoneButton: {
+    marginTop: Spacing.md,
   },
 });

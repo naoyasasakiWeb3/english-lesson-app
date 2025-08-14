@@ -584,23 +584,23 @@ class DatabaseService {
       // まず既存のブックマークを確認
       const existing = await this.db.getFirstAsync(`
         SELECT id FROM enriched_bookmarks 
-        WHERE word = ? AND cefr_level = ?
+        WHERE LOWER(word) = LOWER(?) AND UPPER(cefr_level) = UPPER(?)
       `, [word, cefrLevel]);
 
       if (existing) {
         // 既にブックマークされていれば削除
         await this.db.runAsync(`
           DELETE FROM enriched_bookmarks 
-          WHERE word = ? AND cefr_level = ?
+          WHERE LOWER(word) = LOWER(?) AND UPPER(cefr_level) = UPPER(?)
         `, [word, cefrLevel]);
-        console.log(`Removed bookmark for word: ${word} (${cefrLevel})`);
+        console.log(`Removed bookmark for word (toggle): ${word} (${cefrLevel})`);
       } else {
         // ブックマークされていなければ追加
         await this.db.runAsync(`
           INSERT INTO enriched_bookmarks (word, cefr_level, created_at)
           VALUES (?, ?, datetime('now'))
         `, [word, cefrLevel]);
-        console.log(`Added bookmark for word: ${word} (${cefrLevel})`);
+        console.log(`Added bookmark for word (toggle): ${word} (${cefrLevel})`);
       }
       
       // 確認のためブックマーク数を取得
@@ -638,7 +638,7 @@ class DatabaseService {
       const result = await this.db.getAllAsync(`
         SELECT word, cefr_level, created_at
         FROM enriched_bookmarks 
-        ORDER BY created_at DESC
+        ORDER BY datetime(created_at) DESC, word COLLATE NOCASE ASC
       `);
       
       return result as {word: string; cefr_level: string; created_at: string}[];
@@ -731,13 +731,22 @@ class DatabaseService {
     
     try {
       console.log(`Removing enriched bookmark: ${word} (${cefrLevel})`);
-      
+      const before = await this.db.getFirstAsync(`
+        SELECT COUNT(*) as count FROM enriched_bookmarks
+        WHERE LOWER(word) = LOWER(?) AND UPPER(cefr_level) = UPPER(?)
+      `, [word, cefrLevel]) as any;
+      console.log(`Before remove count for pair: ${before?.count || 0}`);
+
       await this.db.runAsync(`
         DELETE FROM enriched_bookmarks 
-        WHERE word = ? AND cefr_level = ?
+        WHERE LOWER(word) = LOWER(?) AND UPPER(cefr_level) = UPPER(?)
       `, [word, cefrLevel]);
-      
-      console.log(`Successfully removed enriched bookmark: ${word} (${cefrLevel})`);
+
+      const after = await this.db.getFirstAsync(`
+        SELECT COUNT(*) as count FROM enriched_bookmarks
+        WHERE LOWER(word) = LOWER(?) AND UPPER(cefr_level) = UPPER(?)
+      `, [word, cefrLevel]) as any;
+      console.log(`After remove count for pair: ${after?.count || 0}`);
     } catch (error) {
       console.error('Error removing enriched bookmark:', error);
       throw error;
