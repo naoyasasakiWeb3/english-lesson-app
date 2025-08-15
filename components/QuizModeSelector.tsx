@@ -20,15 +20,15 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
       subtitle: 'Mixed difficulty words',
       emoji: '🎲',
       variant: 'primary' as const,
-      description: 'Practice with a random selection of words based on your difficulty level'
+      description: 'Practice with a random selection of words based on your CEFR level. Always 10 questions.'
     },
     {
       id: 'review' as const,
       title: 'Review Mode',
-      subtitle: 'Focus on weak words',
+      subtitle: 'Words with <50% accuracy',
       emoji: '📚',
       variant: 'warning' as const,
-      description: 'Review words you\'ve struggled with in the past'
+      description: 'Review words with accuracy below 50%. Up to 10 questions based on available words.'
     },
     {
       id: 'bookmarked' as const,
@@ -36,15 +36,15 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
       subtitle: 'Your saved words',
       emoji: '⭐',
       variant: 'secondary' as const,
-      description: 'Practice words you\'ve bookmarked for review'
+      description: 'Practice words you\'ve bookmarked for review. Up to 10 questions based on available words.'
     },
     {
       id: 'weak' as const,
       title: 'Challenge Mode',
-      subtitle: 'Difficult words only',
+      subtitle: 'Words with <30% accuracy',
       emoji: '🔥',
       variant: 'error' as const,
-      description: 'Focus on your most challenging vocabulary'
+      description: 'Focus on your most challenging words with accuracy below 30%. Up to 10 questions based on available words.'
     }
   ];
 
@@ -95,10 +95,6 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
         style={styles.selectedModeInfo}
       >
         {selectedModeData && (
-          <>
-            <ThemedText style={styles.selectedModeText}>
-              Selected: {selectedModeData.title}
-            </ThemedText>
             <ModernButton
               title="Start Quiz"
               onPress={onStartQuiz}
@@ -107,7 +103,6 @@ export default function QuizModeSelector({ selectedMode, onModeSelect, onStartQu
               icon="🚀"
               style={styles.startButton}
             />
-          </>
         )}
       </Animated.View>
     </View>

@@ -286,6 +286,50 @@ class EnrichedVocabularyService {
     // 静的にインポートされたデータから利用可能なレベルを返す
     return Object.keys(this.vocabularyData);
   }
+
+  // 追加: 全CEFRレベル横断で前方一致検索（最大limit件）
+  async searchWordsAcrossLevels(prefix: string, limit: number = 10): Promise<{
+    word: string;
+    cefr: string;
+    definition?: string;
+    pronunciation?: string;
+    example?: string;
+    synonyms?: string[];
+    antonyms?: string[];
+    pos?: string;
+  }[]> {
+    const query = prefix.trim().toLowerCase();
+    if (!query) return [];
+
+    const levels = Object.keys(this.vocabularyData);
+    const results: {
+      word: string; cefr: string; definition?: string; pronunciation?: string; example?: string; synonyms?: string[]; antonyms?: string[]; pos?: string;
+    }[] = [];
+
+    for (const level of levels) {
+      const data = this.vocabularyData[level];
+      // できるだけ軽量に前方一致で抽出
+      for (let i = 0; i < data.vocabulary.length; i++) {
+        const v = data.vocabulary[i];
+        if (v.word.toLowerCase().startsWith(query)) {
+          results.push({
+            word: v.word,
+            cefr: v.cefr,
+            definition: this.extractBestDefinition(v) || undefined,
+            pronunciation: v.apiData?.pronunciation?.all || undefined,
+            example: v.apiData?.examples && v.apiData.examples.length > 0 ? v.apiData.examples[0] : undefined,
+            synonyms: v.apiData?.synonyms,
+            antonyms: v.apiData?.antonyms,
+            pos: v.pos,
+          });
+          if (results.length >= limit) return results;
+        }
+      }
+      if (results.length >= limit) break;
+    }
+
+    return results.slice(0, limit);
+  }
 }
 
 export const enrichedVocabularyService = new EnrichedVocabularyService(); 

@@ -30,6 +30,8 @@ export default function SettingsForm() {
   const [userLevel, setUserLevel] = useState({ current_level: 'A1', target_level: 'B2' });
   const [levelStats, setLevelStats] = useState<{[level: string]: number}>({});
   const [enrichedVocabStats, setEnrichedVocabStats] = useState<{[level: string]: number}>({});
+  const [bookmarkStats, setBookmarkStats] = useState({ legacy: 0, enriched: 0 });
+  const [weakWordsStats, setWeakWordsStats] = useState({ legacy: 0, enriched: 0 });
 
   const { control, handleSubmit } = useForm<LearningGoals>({
     defaultValues: userSettings,
@@ -39,6 +41,7 @@ export default function SettingsForm() {
     loadUserLevel();
     loadLevelStats();
     loadEnrichedVocabStats();
+    loadBookmarkAndWeakStats();
   }, []);
 
   // 設定画面がフォーカスされたときにデータをリフレッシュ
@@ -50,6 +53,7 @@ export default function SettingsForm() {
         loadUserLevel();
         loadLevelStats();
         loadEnrichedVocabStats();
+        loadBookmarkAndWeakStats();
       } else {
         console.log('Database not yet initialized - skipping settings data refresh');
       }
@@ -95,6 +99,33 @@ export default function SettingsForm() {
     }
   };
 
+  const loadBookmarkAndWeakStats = async () => {
+    try {
+      // Bookmark統計を取得
+      const legacyBookmarked = await databaseService.getBookmarkedWords();
+      const enrichedBookmarked = await databaseService.getEnrichedBookmarkedWords();
+      
+      // Weak Words統計を取得
+      const legacyWeak = await databaseService.getWeakWords();
+      const enrichedWeak = await databaseService.getEnrichedWeakWords();
+      
+      setBookmarkStats({
+        legacy: legacyBookmarked.length,
+        enriched: enrichedBookmarked.length
+      });
+      
+      setWeakWordsStats({
+        legacy: legacyWeak.length,
+        enriched: enrichedWeak.length
+      });
+      
+      console.log(`Bookmark stats: ${legacyBookmarked.length} legacy, ${enrichedBookmarked.length} enriched`);
+      console.log(`Weak words stats: ${legacyWeak.length} legacy, ${enrichedWeak.length} enriched`);
+    } catch (error) {
+      console.error('Error loading bookmark and weak words stats:', error);
+    }
+  };
+
   const onSubmit = (data: LearningGoals) => {
     setUserSettings(data);
     Alert.alert('Success', 'Settings saved successfully!');
@@ -108,6 +139,86 @@ export default function SettingsForm() {
     } catch (error) {
       Alert.alert('Error', 'Failed to update CEFR levels');
     }
+  };
+
+  const handleDeleteBookmarks = async () => {
+    const totalBookmarks = bookmarkStats.legacy + bookmarkStats.enriched;
+    
+    Alert.alert(
+      'Delete All Bookmarks',
+      `Are you sure you want to delete all ${totalBookmarks} bookmarked words? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Legacy bookmarksを削除
+              if (bookmarkStats.legacy > 0) {
+                await databaseService.clearAllBookmarks();
+              }
+              
+              // Enriched bookmarksを削除
+              if (bookmarkStats.enriched > 0) {
+                await databaseService.clearAllEnrichedBookmarks();
+              }
+              
+              // 統計を更新
+              setBookmarkStats({ legacy: 0, enriched: 0 });
+              
+              Alert.alert('Success', 'All bookmarks have been deleted successfully!');
+            } catch (error) {
+              console.error('Error deleting bookmarks:', error);
+              Alert.alert('Error', 'Failed to delete bookmarks. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDeleteWeakWords = async () => {
+    const totalWeakWords = weakWordsStats.legacy + weakWordsStats.enriched;
+    
+    Alert.alert(
+      'Clear Weak Words Progress',
+      `Are you sure you want to clear progress for all ${totalWeakWords} weak words? This will reset their difficulty status.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Legacy weak words progressを削除（mastery_levelをリセット）
+              if (weakWordsStats.legacy > 0) {
+                await databaseService.clearWeakWordsProgress();
+              }
+              
+              // Enriched weak words progressを削除（is_weak = 0に設定）
+              if (weakWordsStats.enriched > 0) {
+                await databaseService.clearEnrichedWeakWordsProgress();
+              }
+              
+              // 統計を更新
+              setWeakWordsStats({ legacy: 0, enriched: 0 });
+              
+              Alert.alert('Success', 'Weak words progress has been cleared successfully!');
+            } catch (error) {
+              console.error('Error clearing weak words progress:', error);
+              Alert.alert('Error', 'Failed to clear weak words progress. Please try again.');
+            }
+          }
+        }
+      ]
+    );
   };
 
 
@@ -416,6 +527,77 @@ export default function SettingsForm() {
         </ModernCard>
       </Animated.View>
 
+      {/* Data Management Section */}
+      <Animated.View entering={FadeInDown.delay(450)}>
+        <ModernCard variant="error" delay={0}>
+          <ThemedText style={styles.sectionTitle}>🗑️ Data Management</ThemedText>
+          
+          {/* Bookmark Management */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Bookmarked Words</ThemedText>
+            <View style={styles.dataStatsContainer}>
+              <View style={styles.dataStatsRow}>
+                <ThemedText style={styles.dataStatsText}>
+                  Legacy: {bookmarkStats.legacy} words
+                </ThemedText>
+                <ThemedText style={styles.dataStatsText}>
+                  Enriched: {bookmarkStats.enriched} words
+                </ThemedText>
+              </View>
+              <View style={styles.dataStatsTotal}>
+                <ThemedText style={styles.dataStatsTotalText}>
+                  Total: {bookmarkStats.legacy + bookmarkStats.enriched} words
+                </ThemedText>
+              </View>
+            </View>
+            
+            <Animated.View entering={FadeInDown.delay(600)}>
+              <ModernButton
+                title="Delete All Bookmarks"
+                onPress={handleDeleteBookmarks}
+                variant="error"
+                size="md"
+                icon="🗑️"
+                style={styles.deleteButton}
+                disabled={bookmarkStats.legacy + bookmarkStats.enriched === 0}
+              />
+            </Animated.View>
+          </View>
+
+          {/* Weak Words Management */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>Challenging Words</ThemedText>
+            <View style={styles.dataStatsContainer}>
+              <View style={styles.dataStatsRow}>
+                <ThemedText style={styles.dataStatsText}>
+                  Legacy: {weakWordsStats.legacy} words
+                </ThemedText>
+                <ThemedText style={styles.dataStatsText}>
+                  Enriched: {weakWordsStats.enriched} words
+                </ThemedText>
+              </View>
+              <View style={styles.dataStatsTotal}>
+                <ThemedText style={styles.dataStatsTotalText}>
+                  Total: {weakWordsStats.legacy + weakWordsStats.enriched} words
+                </ThemedText>
+              </View>
+            </View>
+            
+            <Animated.View entering={FadeInDown.delay(650)}>
+              <ModernButton
+                title="Clear Weak Words Progress"
+                onPress={handleDeleteWeakWords}
+                variant="error"
+                size="md"
+                icon="🧹"
+                style={styles.deleteButton}
+                disabled={weakWordsStats.legacy + weakWordsStats.enriched === 0}
+              />
+            </Animated.View>
+          </View>
+        </ModernCard>
+      </Animated.View>
+
 
 
       {/* Save Button */}
@@ -598,6 +780,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   levelButton: {
+    width: '100%',
+  },
+  // Data Management styles
+  dataStatsContainer: {
+    marginBottom: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+  },
+  dataStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  dataStatsText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  dataStatsTotal: {
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  dataStatsTotalText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  deleteButton: {
     width: '100%',
   },
 

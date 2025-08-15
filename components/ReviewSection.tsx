@@ -12,6 +12,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
   View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInLeft, FadeInRight } from 'react-native-reanimated';
@@ -49,6 +50,8 @@ export default function ReviewSection() {
         attempts?: number;
         correctAttempts?: number;
         masteryLevel?: number;
+        isBookmarked?: boolean;
+        source?: 'search' | 'bookmarked' | 'challenging';
       }
     | null
   >(null);
@@ -57,6 +60,9 @@ export default function ReviewSection() {
   const [challengingPage, setChallengingPage] = useState(0);
   const [listVisible, setListVisible] = useState(false);
   const [listType, setListType] = useState<'bookmarked' | 'challenging' | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ word: string; cefr: string; definition?: string }[]>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     loadReviewData();
@@ -126,6 +132,31 @@ export default function ReviewSection() {
     }
   };
 
+  // 検索（プレフィックス一致、最大10件）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (searchQuery.trim().length === 0) {
+          setSearchResults([]);
+          return;
+        }
+        setSearching(true);
+        const res = await enrichedVocabularyService.searchWordsAcrossLevels(searchQuery, 10);
+        if (!cancelled) {
+          setSearchResults(res.map(r => ({ word: r.word, cefr: r.cefr, definition: r.definition })));
+        }
+      } catch (e) {
+        if (!cancelled) setSearchResults([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQuery]);
+
   const openLegacyDetail = (word: Word) => {
     setDetailData({
       type: 'legacy',
@@ -140,11 +171,13 @@ export default function ReviewSection() {
   const openEnrichedDetail = async (
     word: string,
     cefr: string,
-    stats?: { attempts?: number; correctAttempts?: number; masteryLevel?: number }
+    stats?: { attempts?: number; correctAttempts?: number; masteryLevel?: number },
+    source?: 'search' | 'bookmarked' | 'challenging'
   ) => {
     try {
       const data = await enrichedVocabularyService.getEnrichedVocabulary(cefr);
       const found = data.vocabulary.find(v => v.word.toLowerCase() === word.toLowerCase());
+      const isBm = await databaseService.isEnrichedWordBookmarked(word, cefr);
       setDetailData({
         type: 'enriched',
         word,
@@ -158,6 +191,8 @@ export default function ReviewSection() {
         attempts: stats?.attempts,
         correctAttempts: stats?.correctAttempts,
         masteryLevel: stats?.masteryLevel,
+        isBookmarked: isBm,
+        source,
       });
       setDetailVisible(true);
     } catch {
@@ -201,6 +236,40 @@ export default function ReviewSection() {
 
   return (
     <View style={styles.container}>
+      {/* Search Section */}
+      <Animated.View entering={FadeInDown.delay(60)}>
+        <ModernCard variant="primary" delay={0}>
+          <ThemedText style={styles.sectionTitle}>🔎 Search Words (A1–C2)</ThemedText>
+          <TextInput
+            placeholder="Type to search..."
+            placeholderTextColor="rgba(255,255,255,0.6)"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.searchInput}
+          />
+          {searchQuery.trim().length > 0 && (
+            <View style={styles.suggestionsBox}>
+              {searching ? (
+                <ThemedText style={styles.detailText}>Searching...</ThemedText>
+              ) : searchResults.length === 0 ? (
+                <ThemedText style={styles.detailText}>No results</ThemedText>
+              ) : (
+                searchResults.map((s, idx) => (
+                  <Pressable key={`s-${s.cefr}-${s.word}-${idx}`} onPress={() => openEnrichedDetail(s.word, s.cefr, undefined, 'search')}>
+                    <View style={styles.suggestionRow}>
+                      <ThemedText style={styles.suggestionWord}>{s.word}</ThemedText>
+                      <View style={styles.cefrBadge}><ThemedText style={styles.cefrText}>{s.cefr}</ThemedText></View>
+                    </View>
+                    {s.definition ? (
+                      <ThemedText style={styles.suggestionDef} numberOfLines={1}>{s.definition}</ThemedText>
+                    ) : null}
+                  </Pressable>
+                ))
+              )}
+            </View>
+          )}
+        </ModernCard>
+      </Animated.View>
       {/* Bookmarked Words Section */}
       <Animated.View entering={FadeInDown.delay(100)}>
         <ModernCard variant="secondary" delay={0}>
@@ -256,7 +325,7 @@ export default function ReviewSection() {
                         <Animated.View key={item.key} entering={FadeInLeft.delay(200 + idx * 80)}>
                           <ModernCard
                             variant="glass"
-                            onPress={() => item.type === 'legacy' ? openLegacyDetail(item.legacy!) : openEnrichedDetail(item.word, item.cefr!)}
+                            onPress={() => item.type === 'legacy' ? openLegacyDetail(item.legacy!) : openEnrichedDetail(item.word, item.cefr!, undefined, 'bookmarked')}
                             style={styles.wordCard}
                             glassEffect={true}
                           >
@@ -375,7 +444,7 @@ export default function ReviewSection() {
                         <Animated.View key={item.key} entering={FadeInRight.delay(300 + idx * 80)}>
                           <ModernCard
                             variant="glass"
-                            onPress={() => item.type === 'legacy' ? undefined : openEnrichedDetail(item.word, item.cefr!, item.stats)}
+                            onPress={() => item.type === 'legacy' ? undefined : openEnrichedDetail(item.word, item.cefr!, item.stats, 'challenging')}
                             style={styles.wordCard}
                             glassEffect={true}
                           >
@@ -520,29 +589,36 @@ export default function ReviewSection() {
                   </View>
                 ) : null}
 
-                {detailData?.type === 'enriched' ? (
+                {detailData?.type === 'enriched' && detailData.source === 'search' && (
                   <ModernButton
-                    title={'attempts' in detailData ? 'Remove Challenging Word' : 'Remove Bookmark'}
+                    title={detailData.isBookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
                     onPress={async () => {
                       try {
-                        console.log('[ReviewSection] Remove button tapped for enriched', {
-                          word: detailData.word,
-                          cefr: detailData.cefr,
-                          mode: 'attempts' in detailData ? 'challenging' : 'bookmarked'
-                        });
-                        if ('attempts' in detailData) {
-                          await databaseService.toggleEnrichedWordBookmark(detailData.word, detailData.cefr);
-                          console.log('[ReviewSection] removeEnrichedWeakWord completed');
-                        } else {
-                          await databaseService.toggleEnrichedWordBookmark(detailData.word, detailData.cefr);
-                          console.log('[ReviewSection] removeEnrichedBookmark completed');
-                        }
+                        await databaseService.toggleEnrichedWordBookmark(detailData.word, detailData.cefr);
                         await loadReviewData();
-                        console.log('[ReviewSection] Data reloaded after removal');
                         setDetailVisible(false);
                       } catch (err) {
-                        console.error('[ReviewSection] Error during removal:', err);
-                        Alert.alert('Error', 'Failed to remove. Please try again.');
+                        console.error('[ReviewSection] Error during bookmark toggle:', err);
+                        Alert.alert('Error', 'Failed to update bookmark.');
+                      }
+                    }}
+                    variant="secondary"
+                    size="md"
+                    icon={detailData.isBookmarked ? '🗑️' : '⭐'}
+                    style={styles.detailRemoveButton}
+                  />
+                )}
+                {detailData?.type === 'enriched' && detailData.source === 'bookmarked' && (
+                  <ModernButton
+                    title="Remove Bookmark"
+                    onPress={async () => {
+                      try {
+                        await databaseService.removeEnrichedBookmark(detailData.word, detailData.cefr);
+                        await loadReviewData();
+                        setDetailVisible(false);
+                      } catch (err) {
+                        console.error('[ReviewSection] Error during enriched bookmark removal:', err);
+                        Alert.alert('Error', 'Failed to remove bookmark.');
                       }
                     }}
                     variant="error"
@@ -550,25 +626,18 @@ export default function ReviewSection() {
                     icon="🗑️"
                     style={styles.detailRemoveButton}
                   />
-                ) : (
+                )}
+                {detailData?.type === 'enriched' && detailData.source === 'challenging' && (
                   <ModernButton
-                    title="Remove Bookmark"
+                    title="Remove Challenging Word"
                     onPress={async () => {
                       try {
-                        const target = bookmarkedWords.find(w => w.word === detailData.word);
-                        console.log('[ReviewSection] Legacy remove tapped', { word: detailData.word, targetId: target?.id });
-                        if (target) {
-                          await databaseService.toggleBookmark(target.id);
-                          console.log('[ReviewSection] toggleBookmark completed');
-                          await loadReviewData();
-                          console.log('[ReviewSection] Data reloaded after legacy removal');
-                        } else {
-                          console.warn('[ReviewSection] Legacy remove failed: target not found');
-                        }
+                        await databaseService.removeEnrichedWeakWord(detailData.word, detailData.cefr);
+                        await loadReviewData();
                         setDetailVisible(false);
                       } catch (err) {
-                        console.error('[ReviewSection] Error during legacy removal:', err);
-                        Alert.alert('Error', 'Failed to remove bookmark.');
+                        console.error('[ReviewSection] Error during weak word removal:', err);
+                        Alert.alert('Error', 'Failed to remove challenging word.');
                       }
                     }}
                     variant="error"
@@ -831,5 +900,37 @@ const styles = StyleSheet.create({
   paginationInfoText: {
     color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 12,
+  },
+  // Search styles
+  searchInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    color: '#ffffff',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.08)'
+  },
+  suggestionsBox: {
+    gap: 8,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  suggestionWord: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  suggestionDef: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    marginLeft: 2,
+    marginBottom: 6,
   },
 });

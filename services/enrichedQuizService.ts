@@ -98,13 +98,19 @@ class EnrichedQuizService {
 
     console.log(`Selected ${correctWords.length} correct words and ${incorrectWords.length} incorrect words`);
 
-    // 各正解単語に対してクイズ問題を生成
+    // 各正解単語に対してクイズ問題を生成（使用済み不正解候補を追跡）
     const questions: QuizQuestion[] = [];
+    const usedIncorrectOptions = new Set<string>();
     
     for (let i = 0; i < correctWords.length; i++) {
       const word = correctWords[i];
       try {
-        const question = await this.createQuestionForEnrichedWord(word, incorrectWords);
+        const question = await this.createQuestionForEnrichedWordWithTracking(
+          word, 
+          incorrectWords, 
+          usedIncorrectOptions,
+          i
+        );
         if (question) {
           questions.push(question);
         }
@@ -137,7 +143,102 @@ class EnrichedQuizService {
     // 最後の手段：基本的な品詞クイズ
     return this.createBasicQuestionWithPool(word, incorrectWordsPool);
   }
+
+  // 使用済み不正解候補を追跡するクイズ問題作成
+  private async createQuestionForEnrichedWordWithTracking(
+    word: CefrQuizWord, 
+    incorrectWordsPool: CefrQuizWord[], 
+    usedIncorrectOptions: Set<string>,
+    questionIndex: number
+  ): Promise<QuizQuestion | null> {
+    console.log(`Creating question ${questionIndex + 1} for word: ${word.word}`);
+    
+    // 定義がある場合は定義クイズを優先
+    if (word.definition && word.definition.trim().length > 0) {
+      return this.createDefinitionQuestionWithTracking(word, incorrectWordsPool, usedIncorrectOptions);
+    }
+    
+    // 同義語がある場合は同義語クイズ
+    if (word.synonyms && word.synonyms.trim().length > 0) {
+      return this.createSynonymQuestionWithTracking(word, incorrectWordsPool, usedIncorrectOptions);
+    }
+    
+    // 例文がある場合は例文クイズ
+    if (word.example_sentence && word.example_sentence.trim().length > 0) {
+      return this.createExampleQuestionWithTracking(word, incorrectWordsPool, usedIncorrectOptions);
+    }
+    
+    // 最後の手段：基本的な品詞クイズ
+    return this.createBasicQuestionWithTracking(word, incorrectWordsPool, usedIncorrectOptions);
+  }
   
+  // 使用済み不正解候補を追跡する定義クイズ作成
+  private createDefinitionQuestionWithTracking(
+    word: CefrQuizWord, 
+    incorrectWordsPool: CefrQuizWord[], 
+    usedIncorrectOptions: Set<string>
+  ): QuizQuestion {
+    const correctDefinition = word.definition!;
+    
+    // 使用済みでない不正解定義を選択
+    const availableIncorrectDefinitions = incorrectWordsPool
+      .filter(w => w.definition && w.definition.trim().length > 0 && w.definition !== correctDefinition)
+      .map(w => w.definition!)
+      .filter(def => def.length < 150 && !usedIncorrectOptions.has(def))
+      .slice(0, 10); // 候補を多く取得してからランダムに選択
+    
+    // ランダムに3つ選択
+    const shuffledAvailable = this.shuffleArray(availableIncorrectDefinitions);
+    const selectedIncorrectDefinitions = shuffledAvailable.slice(0, 3);
+    
+    // 選択した不正解候補を使用済みに追加
+    selectedIncorrectDefinitions.forEach(def => usedIncorrectOptions.add(def));
+    
+    // 不正解が足りない場合は汎用的な不正解を追加
+    const genericWrongAnswers = [
+      "A type of vehicle used for transportation",
+      "A mathematical concept involving calculations", 
+      "A weather phenomenon in nature",
+      "A food item commonly consumed at meals",
+      "A tool used for construction work",
+      "A device for measuring distance",
+      "A musical instrument played with hands",
+      "A substance used in chemical reactions",
+      "A structure for storing materials",
+      "A method for processing information"
+    ];
+    
+    while (selectedIncorrectDefinitions.length < 3) {
+      const availableGeneric = genericWrongAnswers.filter(generic => 
+        !usedIncorrectOptions.has(generic) && !selectedIncorrectDefinitions.includes(generic)
+      );
+      
+      if (availableGeneric.length > 0) {
+        const randomGeneric = availableGeneric[Math.floor(Math.random() * availableGeneric.length)];
+        selectedIncorrectDefinitions.push(randomGeneric);
+        usedIncorrectOptions.add(randomGeneric);
+      } else {
+        // 最後の手段：ユニークなプレースホルダー
+        const fallback = `Alternative definition ${usedIncorrectOptions.size + 1}`;
+        selectedIncorrectDefinitions.push(fallback);
+        usedIncorrectOptions.add(fallback);
+      }
+    }
+    
+    console.log(`Question for "${word.word}": Selected ${selectedIncorrectDefinitions.length} unique incorrect options`);
+    
+    // 選択肢をシャッフル
+    const options = this.shuffleArray([correctDefinition, ...selectedIncorrectDefinitions]);
+    
+    return {
+      word: word,
+      question: `What is the meaning of "${word.word}"?`,
+      options: options,
+      correctAnswer: correctDefinition,
+      type: 'definition'
+    };
+  }
+
   // 定義を選択肢とするクイズ問題を作成
   private createDefinitionQuestionWithPool(word: CefrQuizWord, incorrectWordsPool: CefrQuizWord[]): QuizQuestion {
     // 正解の定義
@@ -178,6 +279,63 @@ class EnrichedQuizService {
     };
   }
   
+  // 使用済み不正解候補を追跡する同義語クイズ作成
+  private createSynonymQuestionWithTracking(
+    word: CefrQuizWord, 
+    incorrectWordsPool: CefrQuizWord[], 
+    usedIncorrectOptions: Set<string>
+  ): QuizQuestion {
+    const synonyms = word.synonyms!.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    const correctSynonym = synonyms[0];
+    
+    // 使用済みでない不正解単語を選択
+    const availableIncorrectWords = incorrectWordsPool
+      .filter(w => w.word !== word.word && !usedIncorrectOptions.has(w.word))
+      .map(w => w.word)
+      .slice(0, 10); // 候補を多く取得してからランダムに選択
+    
+    // ランダムに3つ選択
+    const shuffledAvailable = this.shuffleArray(availableIncorrectWords);
+    const selectedIncorrectWords = shuffledAvailable.slice(0, 3);
+    
+    // 選択した不正解候補を使用済みに追加
+    selectedIncorrectWords.forEach(word => usedIncorrectOptions.add(word));
+    
+    // 不正解が足りない場合は汎用的な単語を追加
+    const genericWrongWords = [
+      "building", "computer", "happiness", "mountain", "ocean", 
+      "flower", "medicine", "technology", "adventure", "knowledge"
+    ];
+    
+    while (selectedIncorrectWords.length < 3) {
+      const availableGeneric = genericWrongWords.filter(generic => 
+        !usedIncorrectOptions.has(generic) && !selectedIncorrectWords.includes(generic)
+      );
+      
+      if (availableGeneric.length > 0) {
+        const randomGeneric = availableGeneric[Math.floor(Math.random() * availableGeneric.length)];
+        selectedIncorrectWords.push(randomGeneric);
+        usedIncorrectOptions.add(randomGeneric);
+      } else {
+        const fallback = `word${usedIncorrectOptions.size + 1}`;
+        selectedIncorrectWords.push(fallback);
+        usedIncorrectOptions.add(fallback);
+      }
+    }
+    
+    console.log(`Synonym question for "${word.word}": Selected ${selectedIncorrectWords.length} unique incorrect words`);
+    
+    const options = this.shuffleArray([correctSynonym, ...selectedIncorrectWords]);
+    
+    return {
+      word: word,
+      question: `Which word is a synonym of "${word.word}"?`,
+      options: options,
+      correctAnswer: correctSynonym,
+      type: 'synonym'
+    };
+  }
+
   // 同義語クイズ問題を作成
   private createSynonymQuestionWithPool(word: CefrQuizWord, incorrectWordsPool: CefrQuizWord[]): QuizQuestion {
     const synonyms = word.synonyms!.split(',').map(s => s.trim()).filter(s => s.length > 0);
@@ -200,6 +358,63 @@ class EnrichedQuizService {
     };
   }
   
+  // 使用済み不正解候補を追跡する例文クイズ作成
+  private createExampleQuestionWithTracking(
+    word: CefrQuizWord, 
+    incorrectWordsPool: CefrQuizWord[], 
+    usedIncorrectOptions: Set<string>
+  ): QuizQuestion {
+    const example = word.example_sentence!;
+    const hiddenExample = example.replace(new RegExp(word.word, 'gi'), '____');
+    
+    // 使用済みでない不正解単語を選択
+    const availableIncorrectWords = incorrectWordsPool
+      .filter(w => w.word !== word.word && !usedIncorrectOptions.has(w.word))
+      .map(w => w.word)
+      .slice(0, 10); // 候補を多く取得してからランダムに選択
+    
+    // ランダムに3つ選択
+    const shuffledAvailable = this.shuffleArray(availableIncorrectWords);
+    const selectedIncorrectWords = shuffledAvailable.slice(0, 3);
+    
+    // 選択した不正解候補を使用済みに追加
+    selectedIncorrectWords.forEach(word => usedIncorrectOptions.add(word));
+    
+    // 不正解が足りない場合は汎用的な単語を追加
+    const genericWrongWords = [
+      "quickly", "beautiful", "important", "different", "possible", 
+      "natural", "special", "simple", "general", "certain"
+    ];
+    
+    while (selectedIncorrectWords.length < 3) {
+      const availableGeneric = genericWrongWords.filter(generic => 
+        !usedIncorrectOptions.has(generic) && !selectedIncorrectWords.includes(generic)
+      );
+      
+      if (availableGeneric.length > 0) {
+        const randomGeneric = availableGeneric[Math.floor(Math.random() * availableGeneric.length)];
+        selectedIncorrectWords.push(randomGeneric);
+        usedIncorrectOptions.add(randomGeneric);
+      } else {
+        const fallback = `alternative${usedIncorrectOptions.size + 1}`;
+        selectedIncorrectWords.push(fallback);
+        usedIncorrectOptions.add(fallback);
+      }
+    }
+    
+    console.log(`Example question for "${word.word}": Selected ${selectedIncorrectWords.length} unique incorrect words`);
+    
+    const options = this.shuffleArray([word.word, ...selectedIncorrectWords]);
+    
+    return {
+      word: word,
+      question: `Fill in the blank: ${hiddenExample}`,
+      options: options,
+      correctAnswer: word.word,
+      type: 'example'
+    };
+  }
+
   // 例文クイズ問題を作成
   private createExampleQuestionWithPool(word: CefrQuizWord, incorrectWordsPool: CefrQuizWord[]): QuizQuestion {
     const example = word.example_sentence!;
@@ -222,6 +437,66 @@ class EnrichedQuizService {
     };
   }
   
+  // 使用済み不正解候補を追跡する基本クイズ作成
+  private createBasicQuestionWithTracking(
+    word: CefrQuizWord, 
+    incorrectWordsPool: CefrQuizWord[], 
+    usedIncorrectOptions: Set<string>
+  ): QuizQuestion {
+    const correctAnswer = `A ${word.pos || 'word'} (${word.cefr_level} level)`;
+    
+    // 使用済みでない不正解選択肢を作成
+    const availableIncorrectOptions = incorrectWordsPool
+      .filter(w => w.pos !== word.pos || w.cefr_level !== word.cefr_level)
+      .map(w => `A ${w.pos || 'word'} (${w.cefr_level} level)`)
+      .filter(option => !usedIncorrectOptions.has(option))
+      .slice(0, 10); // 候補を多く取得してからランダムに選択
+    
+    // ランダムに3つ選択
+    const shuffledAvailable = this.shuffleArray(availableIncorrectOptions);
+    const selectedIncorrectOptions = shuffledAvailable.slice(0, 3);
+    
+    // 選択した不正解候補を使用済みに追加
+    selectedIncorrectOptions.forEach(option => usedIncorrectOptions.add(option));
+    
+    // 不正解が足りない場合は汎用的な説明を追加
+    const genericWrongAnswers = [
+      "A noun (general level)",
+      "A verb (common level)", 
+      "An adjective (basic level)",
+      "An adverb (intermediate level)",
+      "A preposition (advanced level)"
+    ];
+    
+    while (selectedIncorrectOptions.length < 3) {
+      const availableGeneric = genericWrongAnswers.filter(generic => 
+        !usedIncorrectOptions.has(generic) && !selectedIncorrectOptions.includes(generic)
+      );
+      
+      if (availableGeneric.length > 0) {
+        const randomGeneric = availableGeneric[Math.floor(Math.random() * availableGeneric.length)];
+        selectedIncorrectOptions.push(randomGeneric);
+        usedIncorrectOptions.add(randomGeneric);
+      } else {
+        const fallback = `A word type ${usedIncorrectOptions.size + 1}`;
+        selectedIncorrectOptions.push(fallback);
+        usedIncorrectOptions.add(fallback);
+      }
+    }
+    
+    console.log(`Basic question for "${word.word}": Selected ${selectedIncorrectOptions.length} unique incorrect options`);
+    
+    const options = this.shuffleArray([correctAnswer, ...selectedIncorrectOptions]);
+    
+    return {
+      word: word,
+      question: `What type of word is "${word.word}"?`,
+      options: options,
+      correctAnswer: correctAnswer,
+      type: 'definition'
+    };
+  }
+
   // 基本的な品詞クイズ問題を作成
   private createBasicQuestionWithPool(word: CefrQuizWord, incorrectWordsPool: CefrQuizWord[]): QuizQuestion {
     const correctAnswer = `A ${word.pos || 'word'} (${word.cefr_level} level)`;

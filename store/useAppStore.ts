@@ -152,6 +152,84 @@ const generateQuestionsFromLegacyWords = async (words: Word[], count: number): P
   return questions;
 };
 
+// 追跡アルゴリズムを使用したLegacy Words用クイズ生成（不正解候補の重複を防ぐ）
+const generateQuestionsFromLegacyWordsWithTracking = async (words: Word[], count: number): Promise<QuizQuestion[]> => {
+  const questions: QuizQuestion[] = [];
+  const wordsToUse = words.slice(0, count);
+  const usedIncorrectOptions = new Set<string>();
+  
+  // 多数の候補を一度に取得して効率化
+  const allOtherWords = await databaseService.getRandomWords(50);
+  const incorrectCandidates = allOtherWords
+    .filter(w => !wordsToUse.some(target => target.id === w.id))
+    .map(w => w.definition)
+    .filter(def => def && def.length > 0);
+  
+  for (let i = 0; i < wordsToUse.length; i++) {
+    const word = wordsToUse[i];
+    
+    // 使用済みでない不正解候補を選択
+    const availableIncorrectOptions = incorrectCandidates
+      .filter(def => !usedIncorrectOptions.has(def) && def !== word.definition)
+      .slice(0, 10); // 候補を多く取得してからランダムに選択
+    
+    // ランダムに3つ選択
+    const shuffledAvailable = shuffleArray(availableIncorrectOptions);
+    const selectedIncorrectOptions = shuffledAvailable.slice(0, 3);
+    
+    // 選択した不正解候補を使用済みに追加
+    selectedIncorrectOptions.forEach(option => usedIncorrectOptions.add(option));
+    
+    // 不正解が足りない場合は汎用的な定義を追加
+    const genericWrongAnswers = [
+      "A type of vehicle used for transportation",
+      "A mathematical concept involving calculations",
+      "A weather phenomenon in nature",
+      "A food item commonly consumed at meals",
+      "A tool used for construction work",
+      "A device for measuring distance",
+      "A musical instrument played with hands",
+      "A substance used in chemical reactions",
+      "A structure for storing materials",
+      "A method for processing information"
+    ];
+    
+    while (selectedIncorrectOptions.length < 3) {
+      const availableGeneric = genericWrongAnswers.filter(generic => 
+        !usedIncorrectOptions.has(generic) && !selectedIncorrectOptions.includes(generic)
+      );
+      
+      if (availableGeneric.length > 0) {
+        const randomGeneric = availableGeneric[Math.floor(Math.random() * availableGeneric.length)];
+        selectedIncorrectOptions.push(randomGeneric);
+        usedIncorrectOptions.add(randomGeneric);
+      } else {
+        const fallback = `Alternative definition ${usedIncorrectOptions.size + 1}`;
+        selectedIncorrectOptions.push(fallback);
+        usedIncorrectOptions.add(fallback);
+      }
+    }
+    
+    console.log(`Legacy question ${i + 1} for "${word.word}": Selected ${selectedIncorrectOptions.length} unique incorrect options`);
+    
+    const options = shuffleArray([word.definition, ...selectedIncorrectOptions]);
+
+    questions.push({
+      id: `${word.id}-${i}`,
+      word: word.word,
+      correctAnswer: word.definition,
+      options,
+      pronunciation: word.pronunciation,
+      difficulty: word.difficulty,
+      category: word.category,
+      definition: word.definition,
+      questionType: 'definition'
+    });
+  }
+  
+  return questions;
+};
+
 const generateQuestionsFromEnrichedWords = async (
   enrichedWords: {word: string; cefr_level: string}[], 
   count: number
@@ -239,8 +317,9 @@ export const useAppStore = create<AppStore>()(
         set({ isLoading: true });
         try {
           const { userSettings } = get();
-          // randomモードでは固定で10問、他のモードでは設定された値を使用
-          const count = mode === 'random' ? 10 : (wordCount || userSettings.dailyWordCount);
+          // 全モードで最大10問とし、利用可能な単語数に応じて調整
+          const maxCount = 10;
+          const count = wordCount ? Math.min(wordCount, maxCount) : maxCount;
           let questions: QuizQuestion[] = [];
 
           switch (mode) {
@@ -272,25 +351,37 @@ export const useAppStore = create<AppStore>()(
               }
               break;
             case 'review':
-              // Legacy weak words + enriched weak words
+              // Legacy weak words + enriched weak words (accuracy < 50%)
               const legacyWeakWords = await databaseService.getWeakWords();
               const enrichedWeakWords = await databaseService.getEnrichedWeakWords();
               
+              console.log(`Review mode: Found ${legacyWeakWords.length} legacy weak words, ${enrichedWeakWords.length} enriched weak words`);
+              
+              const totalAvailableWords = legacyWeakWords.length + enrichedWeakWords.length;
+              const actualCount = Math.min(count, totalAvailableWords);
+              
               let reviewQuestions: QuizQuestion[] = [];
               
-              // Legacy weak wordsからクイズを生成
-              if (legacyWeakWords.length > 0) {
-                const legacyQuestions = await generateQuestionsFromLegacyWords(legacyWeakWords, Math.ceil(count / 2));
-                reviewQuestions = [...reviewQuestions, ...legacyQuestions];
+              if (totalAvailableWords > 0) {
+                // 利用可能な単語数に基づいて比例配分
+                const legacyPortion = Math.ceil((legacyWeakWords.length / totalAvailableWords) * actualCount);
+                const enrichedPortion = actualCount - legacyPortion;
+                
+                // Legacy weak wordsからクイズを生成（enrichedQuizServiceの追跡アルゴリズムを使用）
+                if (legacyWeakWords.length > 0 && legacyPortion > 0) {
+                  const legacyQuestions = await generateQuestionsFromLegacyWordsWithTracking(legacyWeakWords, legacyPortion);
+                  reviewQuestions = [...reviewQuestions, ...legacyQuestions];
+                }
+                
+                // Enriched weak wordsからクイズを生成
+                if (enrichedWeakWords.length > 0 && enrichedPortion > 0) {
+                  const enrichedQuestions = await generateQuestionsFromEnrichedWords(enrichedWeakWords, enrichedPortion);
+                  reviewQuestions = [...reviewQuestions, ...enrichedQuestions];
+                }
+                
+                questions = shuffleArray(reviewQuestions).slice(0, actualCount);
+                console.log(`Review mode: Generated ${questions.length} questions from ${totalAvailableWords} available words`);
               }
-              
-              // Enriched weak wordsからクイズを生成
-              if (enrichedWeakWords.length > 0) {
-                const enrichedQuestions = await generateQuestionsFromEnrichedWords(enrichedWeakWords, Math.ceil(count / 2));
-                reviewQuestions = [...reviewQuestions, ...enrichedQuestions];
-              }
-              
-              questions = shuffleArray(reviewQuestions).slice(0, count);
               break;
               
             case 'bookmarked':
@@ -298,43 +389,67 @@ export const useAppStore = create<AppStore>()(
               const legacyBookmarkedWords = await databaseService.getBookmarkedWords();
               const enrichedBookmarkedWords = await databaseService.getEnrichedBookmarkedWords();
               
+              console.log(`Bookmarked mode: Found ${legacyBookmarkedWords.length} legacy bookmarked words, ${enrichedBookmarkedWords.length} enriched bookmarked words`);
+              
+              const totalBookmarkedWords = legacyBookmarkedWords.length + enrichedBookmarkedWords.length;
+              const actualBookmarkedCount = Math.min(count, totalBookmarkedWords);
+              
               let bookmarkedQuestions: QuizQuestion[] = [];
               
-              // Legacy bookmarked wordsからクイズを生成
-              if (legacyBookmarkedWords.length > 0) {
-                const legacyQuestions = await generateQuestionsFromLegacyWords(legacyBookmarkedWords, Math.ceil(count / 2));
-                bookmarkedQuestions = [...bookmarkedQuestions, ...legacyQuestions];
+              if (totalBookmarkedWords > 0) {
+                // 利用可能な単語数に基づいて比例配分
+                const legacyBookmarkedPortion = Math.ceil((legacyBookmarkedWords.length / totalBookmarkedWords) * actualBookmarkedCount);
+                const enrichedBookmarkedPortion = actualBookmarkedCount - legacyBookmarkedPortion;
+                
+                // Legacy bookmarked wordsからクイズを生成（enrichedQuizServiceの追跡アルゴリズムを使用）
+                if (legacyBookmarkedWords.length > 0 && legacyBookmarkedPortion > 0) {
+                  const legacyQuestions = await generateQuestionsFromLegacyWordsWithTracking(legacyBookmarkedWords, legacyBookmarkedPortion);
+                  bookmarkedQuestions = [...bookmarkedQuestions, ...legacyQuestions];
+                }
+                
+                // Enriched bookmarked wordsからクイズを生成
+                if (enrichedBookmarkedWords.length > 0 && enrichedBookmarkedPortion > 0) {
+                  const enrichedQuestions = await generateQuestionsFromEnrichedWords(enrichedBookmarkedWords, enrichedBookmarkedPortion);
+                  bookmarkedQuestions = [...bookmarkedQuestions, ...enrichedQuestions];
+                }
+                
+                questions = shuffleArray(bookmarkedQuestions).slice(0, actualBookmarkedCount);
+                console.log(`Bookmarked mode: Generated ${questions.length} questions from ${totalBookmarkedWords} available words`);
               }
-              
-              // Enriched bookmarked wordsからクイズを生成
-              if (enrichedBookmarkedWords.length > 0) {
-                const enrichedQuestions = await generateQuestionsFromEnrichedWords(enrichedBookmarkedWords, Math.ceil(count / 2));
-                bookmarkedQuestions = [...bookmarkedQuestions, ...enrichedQuestions];
-              }
-              
-              questions = shuffleArray(bookmarkedQuestions).slice(0, count);
               break;
               
             case 'weak':
-              // Same as review - challenging words
-              const legacyWeakWordsAgain = await databaseService.getWeakWords();
-              const enrichedWeakWordsAgain = await databaseService.getEnrichedWeakWords();
+              // Challenging words (accuracy < 30%)
+              const legacyWeakWordsChallenge = await databaseService.getWeakWords();
+              const enrichedWeakWordsChallenge = await databaseService.getEnrichedWeakWords();
+              
+              console.log(`Challenge mode: Found ${legacyWeakWordsChallenge.length} legacy weak words, ${enrichedWeakWordsChallenge.length} enriched weak words`);
+              
+              const totalChallengeWords = legacyWeakWordsChallenge.length + enrichedWeakWordsChallenge.length;
+              const actualChallengeCount = Math.min(count, totalChallengeWords);
               
               let weakQuestions: QuizQuestion[] = [];
               
-              // Legacy weak wordsからクイズを生成
-              if (legacyWeakWordsAgain.length > 0) {
-                const legacyQuestions = await generateQuestionsFromLegacyWords(legacyWeakWordsAgain, Math.ceil(count / 2));
-                weakQuestions = [...weakQuestions, ...legacyQuestions];
+              if (totalChallengeWords > 0) {
+                // 利用可能な単語数に基づいて比例配分
+                const legacyChallengePortion = Math.ceil((legacyWeakWordsChallenge.length / totalChallengeWords) * actualChallengeCount);
+                const enrichedChallengePortion = actualChallengeCount - legacyChallengePortion;
+                
+                // Legacy weak wordsからクイズを生成（enrichedQuizServiceの追跡アルゴリズムを使用）
+                if (legacyWeakWordsChallenge.length > 0 && legacyChallengePortion > 0) {
+                  const legacyQuestions = await generateQuestionsFromLegacyWordsWithTracking(legacyWeakWordsChallenge, legacyChallengePortion);
+                  weakQuestions = [...weakQuestions, ...legacyQuestions];
+                }
+                
+                // Enriched weak wordsからクイズを生成
+                if (enrichedWeakWordsChallenge.length > 0 && enrichedChallengePortion > 0) {
+                  const enrichedQuestions = await generateQuestionsFromEnrichedWords(enrichedWeakWordsChallenge, enrichedChallengePortion);
+                  weakQuestions = [...weakQuestions, ...enrichedQuestions];
+                }
+                
+                questions = shuffleArray(weakQuestions).slice(0, actualChallengeCount);
+                console.log(`Challenge mode: Generated ${questions.length} questions from ${totalChallengeWords} available words`);
               }
-              
-              // Enriched weak wordsからクイズを生成
-              if (enrichedWeakWordsAgain.length > 0) {
-                const enrichedQuestions = await generateQuestionsFromEnrichedWords(enrichedWeakWordsAgain, Math.ceil(count / 2));
-                weakQuestions = [...weakQuestions, ...enrichedQuestions];
-              }
-              
-              questions = shuffleArray(weakQuestions).slice(0, count);
               break;
           }
 

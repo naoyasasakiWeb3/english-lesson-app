@@ -805,6 +805,69 @@ class DatabaseService {
     
     return result as { studyTime: number; wordsStudied: number; accuracy: number };
   }
+
+  // データ削除メソッド
+  async clearAllBookmarks(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      console.log('Clearing all legacy bookmarks...');
+      const result = await this.db.runAsync('DELETE FROM bookmarks');
+      console.log(`Cleared ${result.changes} legacy bookmarks`);
+    } catch (error) {
+      console.error('Error clearing legacy bookmarks:', error);
+      throw error;
+    }
+  }
+
+  async clearAllEnrichedBookmarks(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      console.log('Clearing all enriched bookmarks...');
+      const result = await this.db.runAsync('DELETE FROM enriched_bookmarks');
+      console.log(`Cleared ${result.changes} enriched bookmarks`);
+    } catch (error) {
+      console.error('Error clearing enriched bookmarks:', error);
+      throw error;
+    }
+  }
+
+  async clearWeakWordsProgress(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      console.log('Clearing legacy weak words progress...');
+      // mastery_level < 50の進捗をリセット（attempts=0, mastery_level=100に設定）
+      const result = await this.db.runAsync(`
+        UPDATE user_progress 
+        SET attempts = 0, correct_attempts = 0, mastery_level = 100 
+        WHERE mastery_level < 50
+      `);
+      console.log(`Reset ${result.changes} legacy weak words progress records`);
+    } catch (error) {
+      console.error('Error clearing legacy weak words progress:', error);
+      throw error;
+    }
+  }
+
+  async clearEnrichedWeakWordsProgress(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      console.log('Clearing enriched weak words progress...');
+      // is_weak = 1のレコードをis_weak = 0に設定し、mastery_level = 100に更新
+      const result = await this.db.runAsync(`
+        UPDATE enriched_progress 
+        SET is_weak = 0, mastery_level = 100 
+        WHERE is_weak = 1
+      `);
+      console.log(`Reset ${result.changes} enriched weak words progress records`);
+    } catch (error) {
+      console.error('Error clearing enriched weak words progress:', error);
+      throw error;
+    }
+  }
 }
 
 export const databaseService = new DatabaseService();
