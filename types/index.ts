@@ -1,7 +1,6 @@
 export interface LearningGoals {
   dailyStudyTimeMinutes: number; // 1-120分
   dailyWordCount: number; // 5-100単語
-  difficultyLevel: 'beginner' | 'intermediate' | 'advanced';
   reminderTime?: string; // 通知時間
   learningDays: boolean[]; // 週7日の学習曜日
 }
@@ -139,5 +138,5 @@ export interface UserProgress {
 }
 
 export type QuizMode = 'random' | 'review' | 'bookmarked' | 'weak';
-export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced';
+
 export type WordCategory = 'general' | 'business' | 'travel' | 'academic' | 'technology';

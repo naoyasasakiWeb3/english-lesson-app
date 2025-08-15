@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { cefrQuizService } from '../services/cefrQuizService';
+
 import { databaseService } from '../services/database';
 import { enrichedQuizService } from '../services/enrichedQuizService'; // Added import
 import { enrichedVocabularyService } from '../services/enrichedVocabularyService'; // Added import
@@ -53,7 +53,6 @@ interface AppStore {
 const defaultSettings: LearningGoals = {
   dailyStudyTimeMinutes: 15,
   dailyWordCount: 20,
-  difficultyLevel: 'beginner',
   reminderTime: '09:00',
   learningDays: [true, true, true, true, true, true, false] // 月-土
 };
@@ -342,7 +341,7 @@ export const useAppStore = create<AppStore>()(
           if (questions.length === 0) {
             // Fallback to random CEFR words if no questions generated
             console.log('Falling back to default A2 level quiz...');
-            const fallbackQuestions = await cefrQuizService.createCefrQuiz('A2', count);
+            const fallbackQuestions = await enrichedQuizService.createEnrichedCefrQuiz('A2', count);
             questions = fallbackQuestions.map((cefrQ, index) => ({
               id: `${cefrQ.word.id}-${index}`,
               word: cefrQ.word.word,

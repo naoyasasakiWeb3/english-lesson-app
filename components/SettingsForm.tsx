@@ -1,21 +1,23 @@
 import { Spacing } from '@/constants/ModernColors';
 import { useAudio } from '@/hooks/useAudio';
-import { useWordsApiKey } from '@/hooks/useWordsApi';
+
 import { databaseService } from '@/services/database';
+import { enrichedVocabularyService } from '@/services/enrichedVocabularyService';
 import { useAppStore } from '@/store/useAppStore';
-import { DifficultyLevel, LearningGoals } from '@/types';
+import { LearningGoals } from '@/types';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import {
-    Alert,
-    StyleSheet,
-    Switch,
-    View
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  View
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import ApiKeyModal from './ApiKeyModal';
+
 import { ThemedText } from './ThemedText';
 import ModernCard from './layout/ModernCard';
 import ModernButton from './modern/ModernButton';
@@ -24,11 +26,10 @@ export default function SettingsForm() {
   const router = useRouter();
   const { userSettings, setUserSettings } = useAppStore();
   const { settings: audioSettings, updateSettings: updateAudioSettings, speakWord } = useAudio();
-  const { status: apiStatus } = useWordsApiKey();
-  
-  const [showApiModal, setShowApiModal] = useState(false);
+
   const [userLevel, setUserLevel] = useState({ current_level: 'A1', target_level: 'B2' });
   const [levelStats, setLevelStats] = useState<{[level: string]: number}>({});
+  const [enrichedVocabStats, setEnrichedVocabStats] = useState<{[level: string]: number}>({});
 
   const { control, handleSubmit } = useForm<LearningGoals>({
     defaultValues: userSettings,
@@ -37,6 +38,7 @@ export default function SettingsForm() {
   useEffect(() => {
     loadUserLevel();
     loadLevelStats();
+    loadEnrichedVocabStats();
   }, []);
 
   // 設定画面がフォーカスされたときにデータをリフレッシュ
@@ -47,6 +49,7 @@ export default function SettingsForm() {
         console.log('Database initialized - refreshing settings data');
         loadUserLevel();
         loadLevelStats();
+        loadEnrichedVocabStats();
       } else {
         console.log('Database not yet initialized - skipping settings data refresh');
       }
@@ -71,6 +74,27 @@ export default function SettingsForm() {
     }
   };
 
+  const loadEnrichedVocabStats = async () => {
+    try {
+      const levels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+      const stats: {[level: string]: number} = {};
+      
+      for (const level of levels) {
+        try {
+          const vocabData = await enrichedVocabularyService.getEnrichedVocabulary(level);
+          stats[level] = vocabData.metadata.totalWords || 0;
+        } catch (error) {
+          console.warn(`Failed to load ${level} vocabulary stats:`, error);
+          stats[level] = 0;
+        }
+      }
+      
+      setEnrichedVocabStats(stats);
+    } catch (error) {
+      console.error('Error loading enriched vocabulary stats:', error);
+    }
+  };
+
   const onSubmit = (data: LearningGoals) => {
     setUserSettings(data);
     Alert.alert('Success', 'Settings saved successfully!');
@@ -86,22 +110,13 @@ export default function SettingsForm() {
     }
   };
 
-  const handleApiKeySuccess = () => {
-    setShowApiModal(false);
-    Alert.alert('Success', 'API key configured successfully!');
-  };
 
-  const navigateToSavedWords = () => {
-    router.push('/saved-words' as any);
-  };
 
   const studyTimeOptions = [5, 10, 15, 20, 30, 45, 60, 90, 120];
   const wordCountOptions = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
-  const difficultyOptions: { value: DifficultyLevel; label: string }[] = [
-    { value: 'beginner', label: 'Beginner' },
-    { value: 'intermediate', label: 'Intermediate' },
-    { value: 'advanced', label: 'Advanced' },
-  ];
+  const cefrLevels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+  const speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5];
+  const volumeOptions = [0.3, 0.5, 0.7, 1.0];
 
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -114,74 +129,90 @@ export default function SettingsForm() {
           
           {/* Daily Study Time */}
           <View style={styles.setting}>
-            <ThemedText style={styles.label}>Daily Study Time</ThemedText>
+            <ThemedText style={styles.label}>Daily Study Time: {userSettings.dailyStudyTimeMinutes}min</ThemedText>
             <Controller
               control={control}
               name="dailyStudyTimeMinutes"
               render={({ field: { value, onChange } }) => (
-                <View style={styles.optionGrid}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.scrollContainer}
+                  contentContainerStyle={styles.scrollContent}
+                >
                   {studyTimeOptions.map((time, index) => (
                     <Animated.View key={time} entering={FadeInDown.delay(200 + index * 50)}>
                       <ModernButton
                         title={`${time}min`}
                         onPress={() => onChange(time)}
-                        variant={value === time ? 'success' : 'neutral'}
+                        variant={value === time ? 'success' : 'secondary'}
                         size="sm"
-                        style={styles.optionButton}
+                        style={styles.scrollOptionButton}
                       />
                     </Animated.View>
                   ))}
-                </View>
+                </ScrollView>
               )}
             />
           </View>
 
           {/* Daily Word Count */}
           <View style={styles.setting}>
-            <ThemedText style={styles.label}>Daily Word Count</ThemedText>
+            <ThemedText style={styles.label}>Daily Word Count: {userSettings.dailyWordCount} words</ThemedText>
             <Controller
               control={control}
               name="dailyWordCount"
               render={({ field: { value, onChange } }) => (
-                <View style={styles.optionGrid}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.scrollContainer}
+                  contentContainerStyle={styles.scrollContent}
+                >
                   {wordCountOptions.map((count, index) => (
                     <Animated.View key={count} entering={FadeInDown.delay(300 + index * 50)}>
                       <ModernButton
                         title={count.toString()}
                         onPress={() => onChange(count)}
-                        variant={value === count ? 'success' : 'neutral'}
+                        variant={value === count ? 'success' : 'secondary'}
                         size="sm"
-                        style={styles.optionButton}
+                        style={styles.scrollOptionButton}
                       />
                     </Animated.View>
                   ))}
-                </View>
+                </ScrollView>
               )}
             />
           </View>
 
-          {/* Difficulty Level */}
+        </ModernCard>
+      </Animated.View>
+
+      {/* CEFR Level Section */}
+      <Animated.View entering={FadeInDown.delay(150)}>
+        <ModernCard variant="secondary" delay={0}>
+          <ThemedText style={styles.sectionTitle}>📚 CEFR Level</ThemedText>
+          
           <View style={styles.setting}>
-            <ThemedText style={styles.label}>Difficulty Level</ThemedText>
-            <Controller
-              control={control}
-              name="difficultyLevel"
-              render={({ field: { value, onChange } }) => (
-                <View style={styles.difficultyContainer}>
-                  {difficultyOptions.map((option, index) => (
-                    <Animated.View key={option.value} entering={FadeInDown.delay(400 + index * 100)}>
-                      <ModernButton
-                        title={option.label}
-                        onPress={() => onChange(option.value)}
-                        variant={value === option.value ? 'primary' : 'neutral'}
-                        size="md"
-                        style={styles.difficultyButton}
-                      />
-                    </Animated.View>
-                  ))}
-                </View>
-              )}
-            />
+            <ThemedText style={styles.label}>Current Level: {userLevel.current_level}</ThemedText>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.scrollContainer}
+              contentContainerStyle={styles.scrollContent}
+            >
+              {cefrLevels.map((level, index) => (
+                <Animated.View key={level} entering={FadeInDown.delay(400 + index * 100)}>
+                  <ModernButton
+                    title={level}
+                    onPress={() => handleCefrLevelChange(level, level)}
+                    variant={userLevel.current_level === level ? 'primary' : 'secondary'}
+                    size="md"
+                    style={styles.scrollOptionButton}
+                  />
+                </Animated.View>
+              ))}
+            </ScrollView>
           </View>
         </ModernCard>
       </Animated.View>
@@ -261,7 +292,7 @@ export default function SettingsForm() {
                   <ModernButton
                     title={`${accent.flag} ${accent.label}`}
                     onPress={() => updateAudioSettings({ accent: accent.value })}
-                    variant={audioSettings.accent === accent.value ? 'success' : 'neutral'}
+                    variant={audioSettings.accent === accent.value ? 'success' : 'secondary'}
                     size="md"
                     style={styles.accentButton}
                   />
@@ -273,8 +304,13 @@ export default function SettingsForm() {
           {/* Speech Speed */}
           <View style={styles.setting}>
             <ThemedText style={styles.label}>Speech Speed: {audioSettings.speed}x</ThemedText>
-            <View style={styles.speedContainer}>
-              {[0.5, 0.75, 1.0, 1.25, 1.5].map((speed, index) => (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.scrollContainer}
+              contentContainerStyle={styles.scrollContent}
+            >
+              {speedOptions.map((speed, index) => (
                 <Animated.View key={speed} entering={FadeInDown.delay(700 + index * 50)}>
                   <ModernButton
                     title={`${speed}x`}
@@ -282,13 +318,13 @@ export default function SettingsForm() {
                       await updateAudioSettings({ speed });
                       await speakWord('Beautiful', { speed });
                     }}
-                    variant={audioSettings.speed === speed ? 'primary' : 'neutral'}
+                    variant={audioSettings.speed === speed ? 'primary' : 'secondary'}
                     size="sm"
-                    style={styles.speedButton}
+                    style={styles.scrollOptionButton}
                   />
                 </Animated.View>
               ))}
-            </View>
+            </ScrollView>
           </View>
 
           {/* Auto-play Setting */}
@@ -314,19 +350,24 @@ export default function SettingsForm() {
           {/* Volume Setting */}
           <View style={styles.setting}>
             <ThemedText style={styles.label}>Volume: {Math.round(audioSettings.volume * 100)}%</ThemedText>
-            <View style={styles.volumeContainer}>
-              {[0.3, 0.5, 0.7, 1.0].map((volume, index) => (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.scrollContainer}
+              contentContainerStyle={styles.scrollContent}
+            >
+              {volumeOptions.map((volume, index) => (
                 <Animated.View key={volume} entering={FadeInDown.delay(800 + index * 50)}>
                   <ModernButton
                     title={`${Math.round(volume * 100)}%`}
                     onPress={() => updateAudioSettings({ volume })}
-                    variant={audioSettings.volume === volume ? 'error' : 'neutral'}
+                    variant={audioSettings.volume === volume ? 'error' : 'secondary'}
                     size="sm"
-                    style={styles.volumeButton}
+                    style={styles.scrollOptionButton}
                   />
                 </Animated.View>
               ))}
-            </View>
+            </ScrollView>
           </View>
 
           {/* Test Audio */}
@@ -343,115 +384,39 @@ export default function SettingsForm() {
         </ModernCard>
       </Animated.View>
 
-      {/* CEFR Level Settings */}
+      {/* CEFR Vocabulary Statistics */}
       <Animated.View entering={FadeInDown.delay(400)}>
-        <ModernCard variant="secondary" delay={0}>
-          <ThemedText style={styles.sectionTitle}>📚 CEFR Levels</ThemedText>
+        <ModernCard variant="warning" delay={0}>
+          <ThemedText style={styles.sectionTitle}>📊 CEFR Vocabulary Stats</ThemedText>
           
           <View style={styles.setting}>
-            <ThemedText style={styles.label}>Current Level: {userLevel.current_level}</ThemedText>
-            <ThemedText style={styles.label}>Target Level: {userLevel.target_level}</ThemedText>
-            
+            <ThemedText style={styles.label}>Available Enriched Vocabulary</ThemedText>
             <View style={styles.levelContainer}>
-              {Object.entries(levelStats).map(([level, count]) => (
-                <View key={level} style={styles.levelRow}>
-                  <ThemedText style={styles.levelText}>
-                    {level}: {count} words
-                  </ThemedText>
-                </View>
+              {Object.entries(enrichedVocabStats).map(([level, count]) => (
+                <Animated.View key={level} entering={FadeInDown.delay(500 + parseInt(level.charAt(1)) * 50)}>
+                  <View style={styles.levelRow}>
+                    <View style={styles.levelInfo}>
+                      <ThemedText style={styles.levelText}>{level}</ThemedText>
+                      <ThemedText style={styles.levelCount}>{count.toLocaleString()} words</ThemedText>
+                    </View>
+                    <View style={[styles.levelIndicator, { backgroundColor: count > 0 ? '#10b981' : '#ef4444' }]} />
+                  </View>
+                </Animated.View>
               ))}
             </View>
             
-            <ModernButton
-              title="Change CEFR Levels"
-              onPress={() => {
-                Alert.alert(
-                  'Change Levels',
-                  'Select your current and target CEFR levels',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Update Levels', onPress: () => {
-                      // This would ideally open a level selection modal
-                      Alert.prompt(
-                        'Current Level',
-                        'Enter your current CEFR level (A1, A2, B1, B2, C1, C2)',
-                        (currentLevel) => {
-                          if (currentLevel) {
-                            Alert.prompt(
-                              'Target Level',
-                              'Enter your target CEFR level',
-                              (targetLevel) => {
-                                if (targetLevel) {
-                                  handleCefrLevelChange(currentLevel.toUpperCase(), targetLevel.toUpperCase());
-                                }
-                              }
-                            );
-                          }
-                        }
-                      );
-                    }}
-                  ]
-                );
-              }}
-              variant="primary"
-              size="md"
-              icon="🎯"
-              style={styles.levelButton}
-            />
+            {Object.values(enrichedVocabStats).length > 0 && (
+              <View style={styles.totalContainer}>
+                <ThemedText style={styles.totalText}>
+                  Total: {Object.values(enrichedVocabStats).reduce((sum, count) => sum + count, 0).toLocaleString()} words
+                </ThemedText>
+              </View>
+            )}
           </View>
         </ModernCard>
       </Animated.View>
 
-      {/* API Settings */}
-      <Animated.View entering={FadeInDown.delay(500)}>
-        <ModernCard variant={apiStatus.configured ? 'success' : 'warning'} delay={0}>
-          <ThemedText style={styles.sectionTitle}>🔑 Words API</ThemedText>
-          
-          <View style={styles.setting}>
-            <View style={styles.apiStatusRow}>
-              <View style={styles.apiStatusInfo}>
-                <ThemedText style={styles.apiStatusTitle}>
-                  Status: {apiStatus.configured ? 'Configured' : 'Not Set'}
-                </ThemedText>
-                <ThemedText style={styles.apiStatusDescription}>
-                  {apiStatus.configured 
-                    ? 'API key is configured and provides enhanced word data'
-                    : 'Configure API key for detailed word information'
-                  }
-                </ThemedText>
-                {apiStatus.configured && (
-                  <ThemedText style={styles.apiValidationText}>
-                    {apiStatus.valid === true ? '✅ Valid' : apiStatus.valid === false ? '❌ Invalid' : '🔄 Checking...'}
-                  </ThemedText>
-                )}
-              </View>
-              <ThemedText style={styles.apiEmoji}>
-                {apiStatus.configured ? '✅' : '⚠️'}
-              </ThemedText>
-            </View>
-            
-            <View style={styles.apiButtons}>
-              <ModernButton
-                title={apiStatus.configured ? 'Update API Key' : 'Setup API Key'}
-                onPress={() => setShowApiModal(true)}
-                variant={apiStatus.configured ? 'neutral' : 'primary'}
-                size="md"
-                icon="🔑"
-                style={styles.apiButton}
-              />
-              
-              <ModernButton
-                title="View Saved Words"
-                onPress={navigateToSavedWords}
-                variant="secondary"
-                size="md"
-                icon="📚"
-                style={styles.apiButton}
-              />
-            </View>
-          </View>
-        </ModernCard>
-      </Animated.View>
+
 
       {/* Save Button */}
       <Animated.View entering={FadeInDown.delay(400)}>
@@ -465,13 +430,7 @@ export default function SettingsForm() {
         />
       </Animated.View>
 
-      <ApiKeyModal
-        visible={showApiModal}
-        onClose={() => setShowApiModal(false)}
-        onSuccess={handleApiKeySuccess}
-        title="Configure Words API"
-        skipable={true}
-      />
+
     </View>
   );
 }
@@ -505,11 +464,25 @@ const styles = StyleSheet.create({
   optionButton: {
     minWidth: 60,
   },
-  difficultyContainer: {
-    gap: Spacing.sm,
+  // Scroll container styles
+  scrollContainer: {
+    maxHeight: 60,
   },
-  difficultyButton: {
-    width: '100%',
+  scrollContent: {
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
+  },
+  scrollOptionButton: {
+    minWidth: 80,
+    marginRight: Spacing.xs,
+  },
+  cefrContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  cefrButton: {
+    minWidth: 60,
   },
   dayContainer: {
     gap: Spacing.xs,
@@ -596,46 +569,36 @@ const styles = StyleSheet.create({
   },
   levelText: {
     color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  levelCount: {
+    color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '400',
+  },
+  levelInfo: {
+    flex: 1,
+  },
+  levelIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  totalContainer: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  totalText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '700',
   },
   levelButton: {
     width: '100%',
   },
-  // API Settings styles
-  apiStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.md,
-  },
-  apiStatusInfo: {
-    flex: 1,
-  },
-  apiStatusTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: Spacing.xs,
-  },
-  apiStatusDescription: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    lineHeight: 18,
-    marginBottom: Spacing.xs,
-  },
-  apiValidationText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  apiEmoji: {
-    fontSize: 28,
-    marginLeft: Spacing.sm,
-  },
-  apiButtons: {
-    gap: Spacing.sm,
-  },
-  apiButton: {
-    width: '100%',
-  },
+
 });

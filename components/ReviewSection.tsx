@@ -305,11 +305,6 @@ export default function ReviewSection() {
                     icon="⭐"
                     style={styles.reviewButton}
                   />
-                  <View style={styles.paginationInfoRow}>
-                    <ThemedText style={styles.paginationInfoText}>
-                      Total: {bookmarkedWords.length + enrichedBookmarkedWords.length}
-                    </ThemedText>
-                  </View>
               </Animated.View>
             </>
           ) : (

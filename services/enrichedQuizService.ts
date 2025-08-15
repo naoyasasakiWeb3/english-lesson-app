@@ -1,5 +1,24 @@
-import { CefrQuizWord, QuizQuestion } from './cefrQuizService';
+// Type definitions moved from cefrQuizService.ts
 import { enrichedVocabularyService } from './enrichedVocabularyService';
+export interface CefrQuizWord {
+  id: number;
+  word: string;
+  pos?: string;
+  cefr_level: string;
+  definition?: string;
+  pronunciation?: string;
+  example_sentence?: string;
+  synonyms?: string;
+  antonyms?: string;
+}
+
+export interface QuizQuestion {
+  word: CefrQuizWord;
+  question: string;
+  options: string[];
+  correctAnswer: string;
+  type: 'definition' | 'synonym' | 'antonym' | 'example';
+}
 
 class EnrichedQuizService {
   

@@ -1,7 +1,12 @@
-import { CefrQuizWord } from './cefrQuizService';
+import { CefrQuizWord } from './enrichedQuizService';
 
 // 静的インポート（React Native対応）
 import enrichedA1Data from './enriched_vocabulary_A1.json';
+import enrichedA2Data from './enriched_vocabulary_A2.json';
+import enrichedB1Data from './enriched_vocabulary_B1.json';
+import enrichedB2Data from './enriched_vocabulary_B2.json';
+import enrichedC1Data from './enriched_vocabulary_C1.json';
+import enrichedC2Data from './enriched_vocabulary_C2.json';
 
 // Enriched vocabulary data structure
 interface EnrichedVocabularyData {
@@ -62,6 +67,11 @@ class EnrichedVocabularyService {
   // 事前定義された語彙データマッピング（React Native対応）
   private vocabularyData: { [key: string]: EnrichedVocabularyData } = {
     'A1': enrichedA1Data as EnrichedVocabularyData,
+    'A2': enrichedA2Data as EnrichedVocabularyData,
+    'B1': enrichedB1Data as EnrichedVocabularyData,
+    'B2': enrichedB2Data as EnrichedVocabularyData,
+    'C1': enrichedC1Data as EnrichedVocabularyData,
+    'C2': enrichedC2Data as EnrichedVocabularyData,
     // 将来追加: 'A2': enrichedA2Data, 'B1': enrichedB1Data, など
   };
   
