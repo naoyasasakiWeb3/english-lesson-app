@@ -9,7 +9,18 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.naoyasasaki.englishlesson",
+      "buildNumber": "1",
+      "associatedDomains": [
+        "applinks:englishlesson.naoyasasaki.com",
+        "applinks:englishlesson.naoyasasaki.com"
+      ],
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app uses the microphone for speech recognition and pronunciation practice to help you learn English more effectively.",
+        "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to help you practice pronunciation and improve your English speaking skills.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
