@@ -133,6 +133,76 @@ class DatabaseService {
       );
     `);
 
+    // External Words table (for WordsAPI-sourced vocabulary)
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS external_words (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word TEXT UNIQUE NOT NULL,
+        source TEXT DEFAULT 'wordsapi',
+        definitions TEXT, -- JSON array of definitions with part of speech
+        pronunciation TEXT,
+        phonetic TEXT,
+        synonyms TEXT, -- JSON array
+        antonyms TEXT, -- JSON array
+        examples TEXT, -- JSON array
+        frequency_score REAL,
+        difficulty_estimated INTEGER DEFAULT 2,
+        part_of_speech TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // External Word Progress table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS external_word_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        external_word_id INTEGER NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        correct_attempts INTEGER DEFAULT 0,
+        mastery_level INTEGER DEFAULT 0,
+        last_attempt_date DATETIME,
+        is_bookmarked BOOLEAN DEFAULT 0,
+        is_weak BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (external_word_id) REFERENCES external_words (id)
+      );
+    `);
+
+    // API Usage Tracking table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS api_usage_tracking (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        api_provider TEXT NOT NULL DEFAULT 'wordsapi',
+        usage_date DATE NOT NULL,
+        request_count INTEGER DEFAULT 0,
+        successful_requests INTEGER DEFAULT 0,
+        failed_requests INTEGER DEFAULT 0,
+        quota_limit INTEGER DEFAULT 2500,
+        quota_used INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(api_provider, usage_date)
+      );
+    `);
+
+    // User API Settings table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS user_api_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT DEFAULT 'default',
+        api_provider TEXT NOT NULL,
+        is_enabled BOOLEAN DEFAULT 0,
+        daily_quota INTEGER DEFAULT 2500,
+        quota_buffer_percentage INTEGER DEFAULT 10, -- 10% buffer
+        last_key_validation DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, api_provider)
+      );
+    `);
+
     // Create indexes for better performance
     await this.db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_words_difficulty ON words(difficulty);
@@ -144,6 +214,12 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_word_details_word_id ON word_details(word_id);
       CREATE INDEX IF NOT EXISTS idx_enriched_bookmarks_word_level ON enriched_bookmarks(word, cefr_level);
       CREATE INDEX IF NOT EXISTS idx_enriched_progress_word_level ON enriched_progress(word, cefr_level);
+      CREATE INDEX IF NOT EXISTS idx_external_words_word ON external_words(word);
+      CREATE INDEX IF NOT EXISTS idx_external_words_source ON external_words(source);
+      CREATE INDEX IF NOT EXISTS idx_external_word_progress_word_id ON external_word_progress(external_word_id);
+      CREATE INDEX IF NOT EXISTS idx_api_usage_date ON api_usage_tracking(usage_date);
+      CREATE INDEX IF NOT EXISTS idx_api_usage_provider ON api_usage_tracking(api_provider);
+      CREATE INDEX IF NOT EXISTS idx_user_api_settings_provider ON user_api_settings(api_provider);
     `);
   }
 
@@ -866,6 +942,332 @@ class DatabaseService {
     } catch (error) {
       console.error('Error clearing enriched weak words progress:', error);
       throw error;
+    }
+  }
+
+  // ===== EXTERNAL WORDS (WordsAPI) METHODS =====
+
+  async storeExternalWord(wordData: {
+    word: string;
+    source: string;
+    definitions: any[];
+    pronunciation?: string;
+    phonetic?: string;
+    synonyms?: string[];
+    antonyms?: string[];
+    examples?: string[];
+    frequencyScore?: number;
+    partOfSpeech?: string;
+  }): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const result = await this.db.runAsync(`
+        INSERT OR REPLACE INTO external_words 
+        (word, source, definitions, pronunciation, phonetic, synonyms, antonyms, 
+         examples, frequency_score, part_of_speech, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `, [
+        wordData.word,
+        wordData.source,
+        JSON.stringify(wordData.definitions || []),
+        wordData.pronunciation || null,
+        wordData.phonetic || null,
+        JSON.stringify(wordData.synonyms || []),
+        JSON.stringify(wordData.antonyms || []),
+        JSON.stringify(wordData.examples || []),
+        wordData.frequencyScore || null,
+        wordData.partOfSpeech || null
+      ]);
+
+      console.log(`Stored external word: ${wordData.word} (ID: ${result.lastInsertRowId})`);
+      return result.lastInsertRowId as number;
+    } catch (error) {
+      console.error('Error storing external word:', error);
+      throw error;
+    }
+  }
+
+  async getExternalWord(word: string): Promise<any | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const result = await this.db.getFirstAsync(`
+        SELECT * FROM external_words WHERE word = ? COLLATE NOCASE
+      `, [word]);
+
+      if (result) {
+        const row = result as any;
+        return {
+          ...row,
+          definitions: JSON.parse(row.definitions || '[]'),
+          synonyms: JSON.parse(row.synonyms || '[]'),
+          antonyms: JSON.parse(row.antonyms || '[]'),
+          examples: JSON.parse(row.examples || '[]'),
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting external word:', error);
+      return null;
+    }
+  }
+
+  async searchExternalWords(query: string, limit: number = 10): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const results = await this.db.getAllAsync(`
+        SELECT * FROM external_words 
+        WHERE word LIKE ? COLLATE NOCASE
+        ORDER BY word COLLATE NOCASE
+        LIMIT ?
+      `, [`${query}%`, limit]);
+
+      return (results as any[]).map(row => ({
+        ...row,
+        definitions: JSON.parse(row.definitions || '[]'),
+        synonyms: JSON.parse(row.synonyms || '[]'),
+        antonyms: JSON.parse(row.antonyms || '[]'),
+        examples: JSON.parse(row.examples || '[]'),
+      }));
+    } catch (error) {
+      console.error('Error searching external words:', error);
+      return [];
+    }
+  }
+
+  async updateExternalWordProgress(externalWordId: number, isCorrect: boolean): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Check for existing progress record
+      const existing = await this.db.getFirstAsync(`
+        SELECT * FROM external_word_progress WHERE external_word_id = ?
+      `, [externalWordId]) as any;
+
+      if (existing) {
+        // Update existing record
+        const newAttempts = existing.attempts + 1;
+        const newCorrectAttempts = existing.correct_attempts + (isCorrect ? 1 : 0);
+        const newMasteryLevel = Math.min(100, Math.round((newCorrectAttempts / newAttempts) * 100));
+        const isWeak = newMasteryLevel < 50;
+
+        await this.db.runAsync(`
+          UPDATE external_word_progress 
+          SET attempts = ?, correct_attempts = ?, mastery_level = ?, 
+              last_attempt_date = datetime('now'), is_weak = ?, updated_at = datetime('now')
+          WHERE external_word_id = ?
+        `, [newAttempts, newCorrectAttempts, newMasteryLevel, isWeak, externalWordId]);
+      } else {
+        // Create new progress record
+        const masteryLevel = isCorrect ? 100 : 0;
+        await this.db.runAsync(`
+          INSERT INTO external_word_progress 
+          (external_word_id, attempts, correct_attempts, mastery_level, 
+           last_attempt_date, is_weak)
+          VALUES (?, 1, ?, ?, datetime('now'), ?)
+        `, [externalWordId, isCorrect ? 1 : 0, masteryLevel, masteryLevel < 50]);
+      }
+
+      console.log(`Updated progress for external word ID ${externalWordId}: ${isCorrect ? 'correct' : 'incorrect'}`);
+    } catch (error) {
+      console.error('Error updating external word progress:', error);
+      throw error;
+    }
+  }
+
+  async toggleExternalWordBookmark(externalWordId: number): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Check current bookmark status
+      const existing = await this.db.getFirstAsync(`
+        SELECT is_bookmarked FROM external_word_progress WHERE external_word_id = ?
+      `, [externalWordId]) as any;
+
+      if (existing) {
+        // Toggle existing bookmark
+        await this.db.runAsync(`
+          UPDATE external_word_progress 
+          SET is_bookmarked = ?, updated_at = datetime('now')
+          WHERE external_word_id = ?
+        `, [!existing.is_bookmarked, externalWordId]);
+      } else {
+        // Create new progress record with bookmark
+        await this.db.runAsync(`
+          INSERT INTO external_word_progress 
+          (external_word_id, is_bookmarked, attempts, correct_attempts, mastery_level)
+          VALUES (?, 1, 0, 0, 0)
+        `, [externalWordId]);
+      }
+
+      console.log(`Toggled bookmark for external word ID ${externalWordId}`);
+    } catch (error) {
+      console.error('Error toggling external word bookmark:', error);
+      throw error;
+    }
+  }
+
+  // ===== API USAGE TRACKING METHODS =====
+
+  async recordApiUsage(provider: string, successful: boolean): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      // Try to update existing record for today
+      await this.db.runAsync(`
+        INSERT INTO api_usage_tracking 
+        (api_provider, usage_date, request_count, successful_requests, failed_requests)
+        VALUES (?, ?, 1, ?, ?)
+        ON CONFLICT(api_provider, usage_date) DO UPDATE SET
+        request_count = request_count + 1,
+        successful_requests = successful_requests + ?,
+        failed_requests = failed_requests + ?,
+        updated_at = datetime('now')
+      `, [
+        provider, 
+        today, 
+        successful ? 1 : 0, 
+        successful ? 0 : 1,
+        successful ? 1 : 0, 
+        successful ? 0 : 1
+      ]);
+
+      console.log(`Recorded API usage: ${provider} - ${successful ? 'success' : 'failure'}`);
+    } catch (error) {
+      console.error('Error recording API usage:', error);
+      throw error;
+    }
+  }
+
+  async getApiUsageStats(provider: string, date?: string): Promise<any> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      
+      const result = await this.db.getFirstAsync(`
+        SELECT * FROM api_usage_tracking 
+        WHERE api_provider = ? AND usage_date = ?
+      `, [provider, targetDate]);
+
+      return result || {
+        api_provider: provider,
+        usage_date: targetDate,
+        request_count: 0,
+        successful_requests: 0,
+        failed_requests: 0,
+        quota_limit: 2500,
+        quota_used: 0
+      };
+    } catch (error) {
+      console.error('Error getting API usage stats:', error);
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      return {
+        api_provider: provider,
+        usage_date: targetDate,
+        request_count: 0,
+        successful_requests: 0,
+        failed_requests: 0,
+        quota_limit: 2500,
+        quota_used: 0
+      };
+    }
+  }
+
+  async getApiUsageHistory(provider: string, days: number = 30): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const results = await this.db.getAllAsync(`
+        SELECT * FROM api_usage_tracking 
+        WHERE api_provider = ? AND usage_date >= date('now', '-' || ? || ' days')
+        ORDER BY usage_date DESC
+      `, [provider, days]);
+
+      return results as any[];
+    } catch (error) {
+      console.error('Error getting API usage history:', error);
+      return [];
+    }
+  }
+
+  async updateApiSettings(provider: string, settings: {
+    isEnabled?: boolean;
+    dailyQuota?: number;
+    quotaBufferPercentage?: number;
+  }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      await this.db.runAsync(`
+        INSERT INTO user_api_settings 
+        (user_id, api_provider, is_enabled, daily_quota, quota_buffer_percentage, updated_at)
+        VALUES ('default', ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(user_id, api_provider) DO UPDATE SET
+        is_enabled = COALESCE(?, is_enabled),
+        daily_quota = COALESCE(?, daily_quota),
+        quota_buffer_percentage = COALESCE(?, quota_buffer_percentage),
+        updated_at = datetime('now')
+      `, [
+        provider,
+        settings.isEnabled !== undefined ? settings.isEnabled : null,
+        settings.dailyQuota || null,
+        settings.quotaBufferPercentage || null,
+        settings.isEnabled !== undefined ? settings.isEnabled : null,
+        settings.dailyQuota || null,
+        settings.quotaBufferPercentage || null
+      ]);
+
+      console.log(`Updated API settings for ${provider}`);
+    } catch (error) {
+      console.error('Error updating API settings:', error);
+      throw error;
+    }
+  }
+
+  async getApiSettings(provider: string): Promise<any> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const result = await this.db.getFirstAsync(`
+        SELECT * FROM user_api_settings 
+        WHERE user_id = 'default' AND api_provider = ?
+      `, [provider]);
+
+      return result || {
+        api_provider: provider,
+        is_enabled: false,
+        daily_quota: 2500,
+        quota_buffer_percentage: 10
+      };
+    } catch (error) {
+      console.error('Error getting API settings:', error);
+      return {
+        api_provider: provider,
+        is_enabled: false,
+        daily_quota: 2500,
+        quota_buffer_percentage: 10
+      };
+    }
+  }
+
+  async cleanupOldApiUsage(daysToKeep: number = 90): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const result = await this.db.runAsync(`
+        DELETE FROM api_usage_tracking 
+        WHERE usage_date < date('now', '-' || ? || ' days')
+      `, [daysToKeep]);
+
+      console.log(`Cleaned up ${result.changes} old API usage records`);
+    } catch (error) {
+      console.error('Error cleaning up old API usage:', error);
     }
   }
 }

@@ -10,7 +10,7 @@ import Animated, {
     withTiming
 } from 'react-native-reanimated';
 
-type ButtonVariant = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'ghost';
+type ButtonVariant = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'ghost' | 'disabled';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ModernButtonProps {
@@ -74,6 +74,8 @@ export default function ModernButton({
         return ModernColors.gradients.warning;
       case 'error':
         return ModernColors.gradients.error;
+      case 'disabled':
+        return ['#666666', '#888888'];
       default:
         return ModernColors.gradients.primaryBlue;
     }

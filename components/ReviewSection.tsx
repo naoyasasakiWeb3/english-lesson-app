@@ -1,6 +1,8 @@
 import { Spacing } from '@/constants/ModernColors';
 import { databaseService } from '@/services/database';
 import { enrichedVocabularyService } from '@/services/enrichedVocabularyService';
+import { unifiedSearchService } from '@/services/unifiedSearchService';
+import { wordsApiService } from '@/services/wordsApiService';
 import { useAppStore } from '@/store/useAppStore';
 import { Word } from '@/types';
 import { useFocusEffect } from '@react-navigation/native';
@@ -63,10 +65,23 @@ export default function ReviewSection() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ word: string; cefr: string; definition?: string }[]>([]);
   const [searching, setSearching] = useState(false);
+  const [apiSearching, setApiSearching] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
 
   useEffect(() => {
     loadReviewData();
+    checkApiKey();
   }, []);
+
+  const checkApiKey = async () => {
+    try {
+      const hasKey = await wordsApiService.hasApiKey();
+      setHasApiKey(hasKey);
+    } catch (error) {
+      console.error('Error checking API key:', error);
+      setHasApiKey(false);
+    }
+  };
 
   // 画面がフォーカスされたときにデータをリフレッシュ
   useFocusEffect(
@@ -78,6 +93,7 @@ export default function ReviewSection() {
       } else {
         console.log('Database not yet initialized - skipping review data refresh');
       }
+      checkApiKey(); // APIキーの状態も確認
     }, [])
   );
 
@@ -100,7 +116,8 @@ export default function ReviewSection() {
         const levelSet = Array.from(new Set([
           ...enrichedBookmarked.map(w => w.cefr_level),
           ...enrichedWeak.map(w => w.cefr_level),
-        ]));
+        ])).filter(level => level !== 'EXTERNAL'); // EXTERNALレベルを除外
+        
         const map: Record<string, string> = {};
         for (const level of levelSet) {
           const data = await enrichedVocabularyService.getEnrichedVocabulary(level);
@@ -119,6 +136,23 @@ export default function ReviewSection() {
             }
           }
         }
+        
+        // EXTERNALレベルの単語に対して外部データから定義を取得
+        for (const b of enrichedBookmarked.filter(w => w.cefr_level === 'EXTERNAL')) {
+          try {
+            const externalWord = await databaseService.getExternalWord(b.word);
+            if (externalWord && externalWord.definitions) {
+              const defs = JSON.parse(externalWord.definitions);
+              if (defs && defs.length > 0) {
+                map[`${b.word}|EXTERNAL`] = defs[0].definition || 'External API definition';
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to get external definition for ${b.word}:`, error);
+            map[`${b.word}|EXTERNAL`] = 'External API word';
+          }
+        }
+        
         setEnrichedDefinitionMap(map);
       } catch (e) {
         console.warn('Failed to prefetch enriched definitions', e);
@@ -139,15 +173,18 @@ export default function ReviewSection() {
       try {
         if (searchQuery.trim().length === 0) {
           setSearchResults([]);
+          setDetailData(null); // 検索がクリアされた時に詳細データもクリア
           return;
         }
         setSearching(true);
+        setDetailData(null); // 新しい検索の開始時に詳細データをクリア
         const res = await enrichedVocabularyService.searchWordsAcrossLevels(searchQuery, 10);
         if (!cancelled) {
           setSearchResults(res.map(r => ({ word: r.word, cefr: r.cefr, definition: r.definition })));
         }
-      } catch (e) {
+      } catch (error) {
         if (!cancelled) setSearchResults([]);
+        console.warn('Search error:', error);
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -156,6 +193,75 @@ export default function ReviewSection() {
       cancelled = true;
     };
   }, [searchQuery]);
+
+  // WordsAPIで検索する関数
+  const searchWithWordsApi = async () => {
+    if (!searchQuery.trim() || !hasApiKey) {
+      if (!hasApiKey) {
+        Alert.alert(
+          'API Key Required',
+          'Please set your WordsAPI key in Settings first.',
+          [{ text: 'Go to Settings', onPress: () => router.push('/settings') }, { text: 'Cancel' }]
+        );
+      }
+      return;
+    }
+
+    try {
+      setApiSearching(true);
+      const searchResponse = await unifiedSearchService.searchWord(searchQuery.trim(), {
+        enableApiFallback: true,
+        respectApiQuota: true,
+        includeExternalCache: true,
+        userLevel: 'A1', // デフォルトレベル
+      });
+
+      if (searchResponse.result) {
+        // WordsAPIからの結果を詳細表示
+        const wordData = searchResponse.result.wordData;
+        
+        // 検索結果にAPIの結果を追加
+        const apiResult = {
+          word: wordData.word,
+          cefr: 'EXTERNAL',
+          definition: wordData.meanings[0]?.definition || 'No definition available'
+        };
+        setSearchResults([apiResult]);
+        
+        // ブックマーク状態を確認
+        const isBookmarked = await databaseService.isEnrichedWordBookmarked(wordData.word, 'EXTERNAL');
+        
+        // 詳細モーダルも表示
+        setDetailData({
+          type: 'enriched',
+          word: wordData.word,
+          cefr: 'EXTERNAL', // 外部APIからの結果であることを示す
+          definition: wordData.meanings[0]?.definition || 'No definition available',
+          pronunciation: wordData.pronunciation.phonetic,
+          example: wordData.meanings[0]?.example,
+          synonyms: wordData.synonyms,
+          antonyms: wordData.antonyms,
+          pos: wordData.meanings[0]?.partOfSpeech,
+          source: 'search',
+          isBookmarked: isBookmarked,
+        });
+        setDetailVisible(true);
+      } else {
+        Alert.alert(
+          'Word Not Found',
+          `"${searchQuery}" was not found in WordsAPI.${searchResponse.quotaWarning ? '\n\n' + searchResponse.quotaWarning : ''}`
+        );
+      }
+    } catch (error) {
+      console.error('WordsAPI search error:', error);
+      Alert.alert(
+        'Search Error',
+        'Failed to search with WordsAPI. Please try again later.'
+      );
+    } finally {
+      setApiSearching(false);
+    }
+  };
 
   const openLegacyDetail = (word: Word) => {
     setDetailData({
@@ -175,6 +281,101 @@ export default function ReviewSection() {
     source?: 'search' | 'bookmarked' | 'challenging'
   ) => {
     try {
+      // EXTERNALレベルの場合は特別な処理
+      if (cefr === 'EXTERNAL') {
+        // 外部データベースから詳細情報を取得
+        const externalWord = await databaseService.getExternalWord(word);
+        const isBm = await databaseService.isEnrichedWordBookmarked(word, cefr);
+        
+        let definitions: any[] = [];
+        let synonyms: string[] = [];
+        let antonyms: string[] = [];
+        let examples: string[] = [];
+        
+        if (externalWord) {
+          console.log('External word data:', JSON.stringify(externalWord, null, 2));
+          try {
+            if (externalWord.definitions) {
+              definitions = JSON.parse(externalWord.definitions);
+              console.log('Parsed definitions:', definitions);
+            }
+            if (externalWord.synonyms) {
+              synonyms = JSON.parse(externalWord.synonyms);
+              console.log('Parsed synonyms:', synonyms);
+            }
+            if (externalWord.antonyms) {
+              antonyms = JSON.parse(externalWord.antonyms);
+              console.log('Parsed antonyms:', antonyms);
+            }
+            if (externalWord.examples) {
+              examples = JSON.parse(externalWord.examples);
+              console.log('Parsed examples:', examples);
+            }
+          } catch (parseError) {
+            console.warn('Failed to parse external word data:', parseError);
+          }
+        } else {
+          console.log('No external word data found for:', word);
+        }
+        
+        // デバッグ: definitionsの詳細構造を確認
+        console.log('Definitions array length:', definitions.length);
+        if (definitions.length > 0) {
+          console.log('First definition object:', JSON.stringify(definitions[0], null, 2));
+          console.log('Available keys in first definition:', Object.keys(definitions[0]));
+        }
+        
+        // definitionの取得ロジックを改善
+        let definitionText = 'No definition available';
+        let partOfSpeech = 'unknown';
+        
+        if (definitions.length > 0) {
+          const firstDef = definitions[0];
+          
+          // 複数の可能なフィールドから定義を取得
+          if (firstDef.definition) {
+            definitionText = firstDef.definition;
+          } else if (firstDef.meaning) {
+            definitionText = firstDef.meaning;
+          } else if (firstDef.text) {
+            definitionText = firstDef.text;
+          } else if (typeof firstDef === 'string') {
+            definitionText = firstDef;
+          }
+          
+          // partOfSpeechも同様に複数のフィールドをチェック
+          if (firstDef.partOfSpeech) {
+            partOfSpeech = firstDef.partOfSpeech;
+          } else if (firstDef.part_of_speech) {
+            partOfSpeech = firstDef.part_of_speech;
+          } else if (firstDef.pos) {
+            partOfSpeech = firstDef.pos;
+          }
+        }
+        
+        console.log('Final definition text:', definitionText);
+        console.log('Final part of speech:', partOfSpeech);
+
+        const detailDataObj = {
+          type: 'enriched' as const,
+          word,
+          cefr: 'EXTERNAL',
+          definition: definitionText,
+          pronunciation: externalWord?.phonetic || '',
+          example: examples.length > 0 ? examples[0] : undefined,
+          synonyms: synonyms,
+          antonyms: antonyms,
+          pos: partOfSpeech,
+          source: source || 'bookmarked',
+          isBookmarked: isBm,
+        };
+        
+        console.log('Setting detail data for EXTERNAL word:', JSON.stringify(detailDataObj, null, 2));
+        setDetailData(detailDataObj);
+        setDetailVisible(true);
+        return;
+      }
+      
       const data = await enrichedVocabularyService.getEnrichedVocabulary(cefr);
       const found = data.vocabulary.find(v => v.word.toLowerCase() === word.toLowerCase());
       const isBm = await databaseService.isEnrichedWordBookmarked(word, cefr);
@@ -249,22 +450,63 @@ export default function ReviewSection() {
           />
           {searchQuery.trim().length > 0 && (
             <View style={styles.suggestionsBox}>
-              {searching ? (
-                <ThemedText style={styles.detailText}>Searching...</ThemedText>
+              {searching || apiSearching ? (
+                <ThemedText style={styles.detailText}>
+                  {searching && 'Searching local vocabulary...'}
+                  {apiSearching && 'Searching WordsAPI...'}
+                </ThemedText>
               ) : searchResults.length === 0 ? (
-                <ThemedText style={styles.detailText}>No results</ThemedText>
+                <View style={styles.noResultsContainer}>
+                  <ThemedText style={styles.detailText}>No results found in local vocabulary</ThemedText>
+                  <ModernButton
+                    title={hasApiKey ? "Search WordsAPI" : "Please set API Key"}
+                    onPress={searchWithWordsApi}
+                    variant={hasApiKey ? "secondary" : "disabled"}
+                    size="sm"
+                    icon={hasApiKey ? "🔍" : "⚠️"}
+                    style={styles.apiSearchButton}
+                    disabled={!hasApiKey || apiSearching}
+                  />
+                </View>
               ) : (
-                searchResults.map((s, idx) => (
-                  <Pressable key={`s-${s.cefr}-${s.word}-${idx}`} onPress={() => openEnrichedDetail(s.word, s.cefr, undefined, 'search')}>
-                    <View style={styles.suggestionRow}>
-                      <ThemedText style={styles.suggestionWord}>{s.word}</ThemedText>
-                      <View style={styles.cefrBadge}><ThemedText style={styles.cefrText}>{s.cefr}</ThemedText></View>
-                    </View>
-                    {s.definition ? (
-                      <ThemedText style={styles.suggestionDef} numberOfLines={1}>{s.definition}</ThemedText>
-                    ) : null}
-                  </Pressable>
-                ))
+                <>
+                  {searchResults.map((s, idx) => (
+                    <Pressable 
+                      key={`s-${s.cefr}-${s.word}-${idx}`} 
+                      onPress={() => {
+                        if (s.cefr === 'EXTERNAL') {
+                          // 外部API結果の場合も、最新のブックマーク状態で詳細を表示
+                          openEnrichedDetail(s.word, s.cefr, undefined, 'search');
+                        } else {
+                          openEnrichedDetail(s.word, s.cefr, undefined, 'search');
+                        }
+                      }}
+                    >
+                      <View style={styles.suggestionRow}>
+                        <ThemedText style={styles.suggestionWord}>{s.word}</ThemedText>
+                        <View style={s.cefr === 'EXTERNAL' ? styles.apiBadge : styles.cefrBadge}>
+                          <ThemedText style={s.cefr === 'EXTERNAL' ? styles.apiText : styles.cefrText}>
+                            {s.cefr === 'EXTERNAL' ? 'API' : s.cefr}
+                          </ThemedText>
+                        </View>
+                      </View>
+                      {s.definition ? (
+                        <ThemedText style={styles.suggestionDef} numberOfLines={1}>{s.definition}</ThemedText>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                  {hasApiKey && !searchResults.some(r => r.cefr === 'EXTERNAL') && (
+                    <ModernButton
+                      title="Search WordsAPI for more results"
+                      onPress={searchWithWordsApi}
+                      variant="secondary"
+                      size="sm"
+                      icon="🔍"
+                      style={styles.apiSearchButton}
+                      disabled={apiSearching}
+                    />
+                  )}
+                </>
               )}
             </View>
           )}
@@ -546,7 +788,11 @@ export default function ReviewSection() {
                 <ThemedText style={styles.detailTitle}>{detailData.word}</ThemedText>
                 {'cefr' in detailData && detailData.cefr ? (
                   <View style={styles.detailBadgesRow}>
-                    <View style={styles.cefrBadge}><ThemedText style={styles.cefrText}>{detailData.cefr}</ThemedText></View>
+                    <View style={detailData.cefr === 'EXTERNAL' ? styles.apiBadge : styles.cefrBadge}>
+                      <ThemedText style={detailData.cefr === 'EXTERNAL' ? styles.apiText : styles.cefrText}>
+                        {detailData.cefr === 'EXTERNAL' ? 'API' : detailData.cefr}
+                      </ThemedText>
+                    </View>
                     {detailData.pos ? (<View style={styles.sourceBadge}><ThemedText style={styles.sourceText}>{detailData.pos}</ThemedText></View>) : null}
                   </View>
                 ) : null}
@@ -596,6 +842,17 @@ export default function ReviewSection() {
                       try {
                         await databaseService.toggleEnrichedWordBookmark(detailData.word, detailData.cefr);
                         await loadReviewData();
+                        
+                        // 検索結果にEXTERNAL単語がある場合、その状態を更新
+                        if (detailData.cefr === 'EXTERNAL' && searchResults.some(r => r.cefr === 'EXTERNAL' && r.word === detailData.word)) {
+                          // 検索結果から該当のEXTERNAL単語を削除（ブックマーク削除の場合）
+                          const wasBookmarked = detailData.isBookmarked;
+                          if (wasBookmarked) {
+                            // ブックマークを削除した場合、検索結果からも削除
+                            setSearchResults(prev => prev.filter(r => !(r.cefr === 'EXTERNAL' && r.word === detailData.word)));
+                          }
+                        }
+                        
                         setDetailVisible(false);
                       } catch (err) {
                         console.error('[ReviewSection] Error during bookmark toggle:', err);
@@ -776,6 +1033,19 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
+  apiBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.8)', // Green for API results
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: Spacing.xs,
+  },
+  apiText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   difficultyBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
     paddingHorizontal: Spacing.xs,
@@ -932,5 +1202,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 2,
     marginBottom: 6,
+  },
+  noResultsContainer: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  apiSearchButton: {
+    marginTop: Spacing.xs,
+    width: '100%',
   },
 });

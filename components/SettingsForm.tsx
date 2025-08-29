@@ -3,6 +3,8 @@ import { useAudio } from '@/hooks/useAudio';
 
 import { databaseService } from '@/services/database';
 import { enrichedVocabularyService } from '@/services/enrichedVocabularyService';
+import { quotaManager } from '@/services/quotaManager';
+import { wordsApiService } from '@/services/wordsApiService';
 import { useAppStore } from '@/store/useAppStore';
 import { LearningGoals } from '@/types';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,6 +16,7 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
+  TextInput,
   View
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -23,15 +26,38 @@ import ModernCard from './layout/ModernCard';
 import ModernButton from './modern/ModernButton';
 
 export default function SettingsForm() {
-  const router = useRouter();
+  const router = useRouter(); // Used for navigation to specific settings screens
   const { userSettings, setUserSettings } = useAppStore();
   const { settings: audioSettings, updateSettings: updateAudioSettings, speakWord } = useAudio();
 
   const [userLevel, setUserLevel] = useState({ current_level: 'A1', target_level: 'B2' });
-  const [levelStats, setLevelStats] = useState<{[level: string]: number}>({});
+  const [levelStats] = useState<{[level: string]: number}>({}); // Stats for future feature implementation
   const [enrichedVocabStats, setEnrichedVocabStats] = useState<{[level: string]: number}>({});
   const [bookmarkStats, setBookmarkStats] = useState({ legacy: 0, enriched: 0 });
   const [weakWordsStats, setWeakWordsStats] = useState({ legacy: 0, enriched: 0 });
+  
+  // WordsAPI settings state
+  const [apiKey, setApiKey] = useState('');
+  const [apiEnabled, setApiEnabled] = useState(false);
+  const [apiUsageStats, setApiUsageStats] = useState({
+    todayUsage: 0,
+    dailyQuota: 2500,
+    remainingRequests: 2500,
+    usagePercentage: 0,
+    warningLevel: 'safe' as 'safe' | 'warning' | 'critical' | 'exceeded',
+    effectiveQuota: 2250,
+    bufferRemaining: 2250,
+  });
+  const [cacheStats, setCacheStats] = useState({ count: 0, size: '0 KB' });
+  const [quotaReport, setQuotaReport] = useState<{
+    warnings: string[];
+    recommendations: string[];
+    resetTime: Date;
+  }>({
+    warnings: [],
+    recommendations: [],
+    resetTime: new Date(),
+  });
 
   const { control, handleSubmit } = useForm<LearningGoals>({
     defaultValues: userSettings,
@@ -42,6 +68,7 @@ export default function SettingsForm() {
     loadLevelStats();
     loadEnrichedVocabStats();
     loadBookmarkAndWeakStats();
+    loadApiSettings();
   }, []);
 
   // 設定画面がフォーカスされたときにデータをリフレッシュ
@@ -54,6 +81,7 @@ export default function SettingsForm() {
         loadLevelStats();
         loadEnrichedVocabStats();
         loadBookmarkAndWeakStats();
+        loadApiSettings();
       } else {
         console.log('Database not yet initialized - skipping settings data refresh');
       }
@@ -71,8 +99,8 @@ export default function SettingsForm() {
 
   const loadLevelStats = async () => {
     try {
-      const stats = await databaseService.getCefrLevelStats();
-      setLevelStats(stats);
+      // Note: Level stats are currently not displayed in UI but may be used later
+      console.log('Level stats loading - feature not currently displayed');
     } catch (error) {
       console.error('Error loading level stats:', error);
     }
@@ -123,6 +151,32 @@ export default function SettingsForm() {
       console.log(`Weak words stats: ${legacyWeak.length} legacy, ${enrichedWeak.length} enriched`);
     } catch (error) {
       console.error('Error loading bookmark and weak words stats:', error);
+    }
+  };
+
+  const loadApiSettings = async () => {
+    try {
+      // Load API key status
+      const hasKey = await wordsApiService.hasApiKey();
+      setApiEnabled(hasKey);
+      
+      if (hasKey) {
+        // Load enhanced usage statistics
+        const usageStats = await wordsApiService.getUsageStats();
+        setApiUsageStats(usageStats);
+        
+        // Load cache statistics
+        const cacheData = await wordsApiService.getCacheStats();
+        setCacheStats(cacheData);
+        
+        // Load quota report with warnings and recommendations
+        const report = await quotaManager.getUsageReport();
+        setQuotaReport(report);
+        
+        console.log('WordsAPI settings loaded:', { hasKey, usageStats, cacheData, report });
+      }
+    } catch (error) {
+      console.error('Error loading WordsAPI settings:', error);
     }
   };
 
@@ -214,6 +268,92 @@ export default function SettingsForm() {
             } catch (error) {
               console.error('Error clearing weak words progress:', error);
               Alert.alert('Error', 'Failed to clear weak words progress. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleSaveApiKey = async () => {
+    if (!apiKey.trim()) {
+      Alert.alert('Error', 'Please enter a valid API key');
+      return;
+    }
+
+    try {
+      const success = await wordsApiService.setApiKey(apiKey.trim());
+      if (success) {
+        setApiEnabled(true);
+        await loadApiSettings(); // Refresh stats after successful key setup
+        Alert.alert('Success', 'WordsAPI key saved and validated successfully!');
+      } else {
+        Alert.alert('Error', 'Invalid API key. Please check your key and try again.');
+      }
+    } catch (error) {
+      console.error('Error saving WordsAPI key:', error);
+      Alert.alert('Error', 'Failed to save API key. Please try again.');
+    }
+  };
+
+  const handleRemoveApiKey = async () => {
+    Alert.alert(
+      'Remove API Key',
+      'Are you sure you want to remove the WordsAPI key? This will disable external word search functionality.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await wordsApiService.removeApiKey();
+              setApiKey('');
+              setApiEnabled(false);
+              setApiUsageStats({
+                todayUsage: 0,
+                dailyQuota: 2500,
+                remainingRequests: 2500,
+                usagePercentage: 0,
+                warningLevel: 'safe',
+                effectiveQuota: 2250,
+                bufferRemaining: 2250,
+              });
+              setCacheStats({ count: 0, size: '0 KB' });
+              Alert.alert('Success', 'WordsAPI key removed successfully.');
+            } catch (error) {
+              console.error('Error removing WordsAPI key:', error);
+              Alert.alert('Error', 'Failed to remove API key. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleClearApiCache = async () => {
+    Alert.alert(
+      'Clear API Cache',
+      'Are you sure you want to clear all cached WordsAPI results? This will free up storage space but may increase API usage.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await wordsApiService.clearCache();
+              await loadApiSettings(); // Refresh cache stats
+              Alert.alert('Success', 'WordsAPI cache cleared successfully.');
+            } catch (error) {
+              console.error('Error clearing WordsAPI cache:', error);
+              Alert.alert('Error', 'Failed to clear cache. Please try again.');
             }
           }
         }
@@ -492,6 +632,171 @@ export default function SettingsForm() {
               style={styles.testAudioButton}
             />
           </Animated.View>
+        </ModernCard>
+      </Animated.View>
+
+      {/* WordsAPI Settings Section */}
+      <Animated.View entering={FadeInDown.delay(350)}>
+        <ModernCard variant="primary" delay={0}>
+          <ThemedText style={styles.sectionTitle}>🔍 WordsAPI Settings</ThemedText>
+          
+          {/* API Key Configuration */}
+          <View style={styles.setting}>
+            <ThemedText style={styles.label}>API Configuration</ThemedText>
+            
+            {!apiEnabled ? (
+              <>
+                <View style={styles.apiWarningContainer}>
+                  <ThemedText style={styles.apiWarningTitle}>⚠️ API Key Required</ThemedText>
+                  <ThemedText style={styles.apiWarningText}>
+                    WordsAPI key is not configured. External word search functionality is disabled.
+                  </ThemedText>
+                </View>
+                
+                <ThemedText style={styles.apiDescription}>
+                  Enter your RapidAPI key for WordsAPI to enable external word search when words are not found in the built-in dictionary.
+                </ThemedText>
+                
+                <View style={styles.apiKeyContainer}>
+                  <TextInput
+                    style={styles.apiKeyInput}
+                    placeholder="Enter your RapidAPI key..."
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={apiKey}
+                    onChangeText={setApiKey}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <Animated.View entering={FadeInDown.delay(400)}>
+                    <ModernButton
+                      title={apiKey.trim() ? "Save Key" : "Please enter API Key"}
+                      onPress={handleSaveApiKey}
+                      variant={apiKey.trim() ? "success" : "disabled"}
+                      size="md"
+                      icon={apiKey.trim() ? "💾" : "⚠️"}
+                      disabled={!apiKey.trim()}
+                      style={styles.apiSaveButton}
+                    />
+                  </Animated.View>
+                </View>
+                
+                <ThemedText style={styles.apiHelpText}>
+                  Get your free API key at rapidapi.com/dpventures/api/wordsapi
+                </ThemedText>
+              </>
+            ) : (
+              <>
+                <View style={styles.apiStatusContainer}>
+                  <View style={styles.apiStatusRow}>
+                    <View style={styles.apiStatusIndicator} />
+                    <ThemedText style={styles.apiStatusText}>WordsAPI Connected</ThemedText>
+                  </View>
+                  <Animated.View entering={FadeInDown.delay(400)}>
+                    <ModernButton
+                      title="Remove Key"
+                      onPress={handleRemoveApiKey}
+                      variant="error"
+                      size="sm"
+                      icon="🗑️"
+                      style={styles.apiRemoveButton}
+                    />
+                  </Animated.View>
+                </View>
+
+                {/* Usage Statistics */}
+                <View style={styles.usageStatsContainer}>
+                  <ThemedText style={styles.usageStatsTitle}>Today&apos;s Usage</ThemedText>
+                  <View style={styles.usageStatsRow}>
+                    <View style={styles.usageStat}>
+                      <ThemedText style={styles.usageStatNumber}>{apiUsageStats.todayUsage}</ThemedText>
+                      <ThemedText style={styles.usageStatLabel}>Used</ThemedText>
+                    </View>
+                    <View style={styles.usageStat}>
+                      <ThemedText style={styles.usageStatNumber}>{apiUsageStats.bufferRemaining}</ThemedText>
+                      <ThemedText style={styles.usageStatLabel}>Buffer Left</ThemedText>
+                    </View>
+                    <View style={styles.usageStat}>
+                      <ThemedText style={styles.usageStatNumber}>{apiUsageStats.usagePercentage}%</ThemedText>
+                      <ThemedText style={styles.usageStatLabel}>Usage</ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.usageProgressBar}>
+                    <View 
+                      style={[
+                        styles.usageProgressFill, 
+                        { 
+                          width: `${Math.min(apiUsageStats.usagePercentage, 100)}%`,
+                          backgroundColor: apiUsageStats.warningLevel === 'exceeded' ? '#ef4444' : 
+                                         apiUsageStats.warningLevel === 'critical' ? '#f59e0b' : 
+                                         apiUsageStats.warningLevel === 'warning' ? '#eab308' : '#10b981'
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <View style={styles.quotaDetailsRow}>
+                    <ThemedText style={styles.quotaText}>
+                      Safe Buffer: {apiUsageStats.effectiveQuota.toLocaleString()} / {apiUsageStats.dailyQuota.toLocaleString()}
+                    </ThemedText>
+                    <View style={[styles.warningLevelBadge, { 
+                      backgroundColor: apiUsageStats.warningLevel === 'exceeded' ? '#ef4444' : 
+                                     apiUsageStats.warningLevel === 'critical' ? '#f59e0b' : 
+                                     apiUsageStats.warningLevel === 'warning' ? '#eab308' : '#10b981'
+                    }]}>
+                      <ThemedText style={styles.warningLevelText}>
+                        {apiUsageStats.warningLevel.toUpperCase()}
+                      </ThemedText>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Quota Warnings */}
+                {quotaReport.warnings.length > 0 && (
+                  <View style={styles.quotaWarningsContainer}>
+                    <ThemedText style={styles.quotaWarningsTitle}>⚠️ Quota Alerts</ThemedText>
+                    {quotaReport.warnings.map((warning, index) => (
+                      <View key={index} style={styles.warningItem}>
+                        <ThemedText style={styles.warningText}>{warning}</ThemedText>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Recommendations */}
+                {quotaReport.recommendations.length > 0 && (
+                  <View style={styles.recommendationsContainer}>
+                    <ThemedText style={styles.recommendationsTitle}>💡 Recommendations</ThemedText>
+                    {quotaReport.recommendations.map((rec, index) => (
+                      <View key={index} style={styles.recommendationItem}>
+                        <ThemedText style={styles.recommendationText}>• {rec}</ThemedText>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Cache Statistics */}
+                <View style={styles.cacheStatsContainer}>
+                  <ThemedText style={styles.cacheStatsTitle}>Cache Status</ThemedText>
+                  <View style={styles.cacheStatsRow}>
+                    <ThemedText style={styles.cacheStatsText}>
+                      {cacheStats.count} words cached ({cacheStats.size})
+                    </ThemedText>
+                    <Animated.View entering={FadeInDown.delay(500)}>
+                      <ModernButton
+                        title="Clear Cache"
+                        onPress={handleClearApiCache}
+                        variant="warning"
+                        size="sm"
+                        icon="🧹"
+                        disabled={cacheStats.count === 0}
+                        style={styles.clearCacheButton}
+                      />
+                    </Animated.View>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
         </ModernCard>
       </Animated.View>
 
@@ -813,6 +1118,220 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     width: '100%',
+  },
+  // WordsAPI Settings styles
+  apiWarningContainer: {
+    backgroundColor: 'rgba(255, 152, 0, 0.15)',
+    padding: Spacing.md,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
+    marginBottom: Spacing.md,
+  },
+  apiWarningTitle: {
+    color: '#ff9800',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: Spacing.xs,
+  },
+  apiWarningText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  apiDescription: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: Spacing.md,
+  },
+  apiKeyContainer: {
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  apiKeyInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: 16,
+    color: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    minHeight: 48,
+  },
+  apiSaveButton: {
+    width: '100%',
+  },
+  apiHelpText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  apiStatusContainer: {
+    marginBottom: Spacing.lg,
+  },
+  apiStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  apiStatusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10b981',
+    marginRight: Spacing.sm,
+  },
+  apiStatusText: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  apiRemoveButton: {
+    minWidth: 120,
+  },
+  usageStatsContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  usageStatsTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  usageStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: Spacing.md,
+  },
+  usageStat: {
+    alignItems: 'center',
+  },
+  usageStatNumber: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  usageStatLabel: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  usageProgressBar: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: Spacing.sm,
+  },
+  usageProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  quotaText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  cacheStatsContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: Spacing.md,
+  },
+  cacheStatsTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  cacheStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cacheStatsText: {
+    flex: 1,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
+    marginRight: Spacing.md,
+  },
+  clearCacheButton: {
+    minWidth: 100,
+  },
+  // Enhanced quota management styles
+  quotaDetailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  warningLevelBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  warningLevelText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  quotaWarningsContainer: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  quotaWarningsTitle: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: Spacing.sm,
+  },
+  warningItem: {
+    marginBottom: Spacing.xs,
+  },
+  warningText: {
+    color: '#ffffff',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  recommendationsContainer: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderRadius: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  recommendationsTitle: {
+    color: '#10b981',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: Spacing.sm,
+  },
+  recommendationItem: {
+    marginBottom: Spacing.xs,
+  },
+  recommendationText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 13,
+    lineHeight: 18,
   },
 
 });
