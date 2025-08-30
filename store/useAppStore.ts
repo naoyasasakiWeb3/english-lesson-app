@@ -230,6 +230,9 @@ const generateQuestionsFromLegacyWordsWithTracking = async (words: Word[], count
   return questions;
 };
 
+// CEFRレベル定義のキャッシュ
+let cefrDefinitionsCache: string[] | null = null;
+
 const generateQuestionsFromEnrichedWords = async (
   enrichedWords: {word: string; cefr_level: string}[], 
   count: number
@@ -241,7 +244,114 @@ const generateQuestionsFromEnrichedWords = async (
     const enrichedWord = enrichedWords[i];
     
     try {
-      // enriched vocabulary dataから詳細情報を取得
+      // EXTERNALレベルの場合は特別な処理
+      if (enrichedWord.cefr_level === 'EXTERNAL') {
+        console.log(`Processing EXTERNAL word: ${enrichedWord.word}`);
+        
+        // データベースから外部単語の詳細を取得
+        const externalWord = await databaseService.getExternalWord(enrichedWord.word);
+        
+        if (externalWord && externalWord.definitions) {
+          try {
+            const definitions = JSON.parse(externalWord.definitions);
+            
+            if (definitions.length > 0 && definitions[0].definition) {
+              const definition = definitions[0].definition;
+              
+              // CEFRレベルから不正解選択肢を作成（キャッシュ使用）
+              let cefrDefinitions = [];
+              
+              if (!cefrDefinitionsCache) {
+                console.log('Building CEFR definitions cache for wrong answers...');
+                cefrDefinitionsCache = [];
+                
+                // 複数のCEFRレベルから定義を収集
+                const cefrLevels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+                
+                for (const level of cefrLevels) {
+                  try {
+                    const vocabularyData = await enrichedVocabularyService.getEnrichedVocabulary(level);
+                    
+                    if (vocabularyData?.vocabulary) {
+                      for (const wordEntry of vocabularyData.vocabulary) {
+                        if (wordEntry.apiData?.definitions && 
+                            wordEntry.apiData.definitions.length > 0) {
+                          cefrDefinitionsCache.push(wordEntry.apiData.definitions[0].definition);
+                        }
+                      }
+                    }
+                  } catch (error) {
+                    console.warn(`Failed to load CEFR level ${level} for wrong answers:`, error);
+                  }
+                }
+                console.log(`CEFR definitions cache built with ${cefrDefinitionsCache.length} definitions`);
+              }
+              
+              // キャッシュから対象単語以外の定義を取得
+              cefrDefinitions = cefrDefinitionsCache.filter(def => {
+                // 対象単語の定義と異なることを確認
+                return def.toLowerCase() !== definition.toLowerCase();
+              });
+              
+              // 他のEXTERNAL単語からも候補を追加（利用可能な場合）
+              try {
+                const otherExternalWords = await databaseService.getAllExternalWords();
+                for (const otherWord of otherExternalWords) {
+                  if (otherWord.word !== enrichedWord.word && otherWord.definitions) {
+                    try {
+                      const otherDefs = JSON.parse(otherWord.definitions);
+                      if (otherDefs.length > 0 && otherDefs[0].definition) {
+                        cefrDefinitions.push(otherDefs[0].definition);
+                      }
+                    } catch (e) {
+                      console.warn('Failed to parse other external word definitions:', e);
+                    }
+                  }
+                }
+              } catch (error) {
+                console.warn('Failed to load other external words for wrong answers:', error);
+              }
+              
+              console.log(`Found ${cefrDefinitions.length} potential wrong answer definitions for EXTERNAL word`);
+              
+              // 不正解選択肢をシャッフルして3つ選択
+              const wrongAnswers = shuffleArray(cefrDefinitions).slice(0, 3);
+              
+              // まだ不足している場合のみプレースホルダーを使用
+              if (wrongAnswers.length < 3) {
+                console.warn(`Only found ${wrongAnswers.length} wrong answers for EXTERNAL word ${enrichedWord.word}, using fallback`);
+                while (wrongAnswers.length < 3) {
+                  wrongAnswers.push(`Alternative definition ${wrongAnswers.length + 1}`);
+                }
+              }
+              
+              const allOptions = shuffleArray([definition, ...wrongAnswers]);
+              
+              questions.push({
+                id: `external_${questions.length}`,
+                word: enrichedWord.word,
+                correctAnswer: definition,
+                options: allOptions,
+                pronunciation: externalWord.phonetic || '',
+                difficulty: externalWord.difficulty_estimated || 2,
+                category: 'External API',
+                definition: definition,
+                questionType: 'definition'
+              });
+              
+              console.log(`Generated question for EXTERNAL word: ${enrichedWord.word}`);
+            }
+          } catch (parseError) {
+            console.warn(`Failed to parse external word definitions for ${enrichedWord.word}:`, parseError);
+          }
+        } else {
+          console.warn(`No external word data found for: ${enrichedWord.word}`);
+        }
+        
+        continue; // EXTERNALの処理が完了したので次の単語へ
+      }
+      
+      // 通常のenriched vocabulary dataから詳細情報を取得（CEFR単語の場合）
       const vocabularyData = await enrichedVocabularyService.getEnrichedVocabulary(enrichedWord.cefr_level);
       const wordData = vocabularyData.vocabulary.find(w => w.word === enrichedWord.word);
       

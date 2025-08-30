@@ -1014,6 +1014,25 @@ class DatabaseService {
     }
   }
 
+  async getAllExternalWords(): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const results = await this.db.getAllAsync(`
+        SELECT * FROM external_words ORDER BY word
+      `);
+
+      return results.map((row: any) => ({
+        ...row,
+        // 生のJSON文字列のまま返す（パフォーマンスのため）
+        // 必要に応じて呼び出し側でJSON.parseする
+      }));
+    } catch (error) {
+      console.error('Error getting all external words:', error);
+      return [];
+    }
+  }
+
   async searchExternalWords(query: string, limit: number = 10): Promise<any[]> {
     if (!this.db) throw new Error('Database not initialized');
 
