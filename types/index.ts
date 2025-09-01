@@ -19,13 +19,27 @@ export interface QuizQuestion {
   cefrLevel?: string; // CEFRレベル情報（A1, A2, B1等）
 }
 
+export interface DefinitionMetadata {
+  source: 'legacy' | 'wordsapi' | 'cefr' | 'external';
+  definitionId?: string;
+  migrated?: boolean;
+  originalId?: number;
+  originalIndex?: number;
+  confidenceScore?: number;
+  lastUpdated?: string;
+}
+
+export interface EnhancedMeaning {
+  partOfSpeech: string;
+  definition: string;
+  example?: string;
+  source?: 'legacy' | 'wordsapi' | 'cefr' | 'external';
+  metadata?: DefinitionMetadata;
+}
+
 export interface WordData {
   word: string;
-  meanings: {
-    partOfSpeech: string;
-    definition: string;
-    example?: string;
-  }[];
+  meanings: EnhancedMeaning[];
   pronunciation: {
     phonetic: string;
     audio?: string;

@@ -407,15 +407,14 @@ export class UnifiedSearchService {
       const externalWordData = {
         word: wordData.word,
         source: 'wordsapi',
-        definitions: JSON.stringify(wordData.meanings),
+        definitions: wordData.meanings, // Pass the meanings array directly
         pronunciation: wordData.pronunciation.audio,
         phonetic: wordData.pronunciation.phonetic,
-        synonyms: JSON.stringify(wordData.synonyms),
-        antonyms: JSON.stringify(wordData.antonyms),
-        examples: JSON.stringify(examples), // Extract examples from meanings
-        frequency_score: null,
-        difficulty_estimated: 2, // Default difficulty
-        part_of_speech: wordData.meanings[0]?.partOfSpeech || 'unknown',
+        synonyms: wordData.synonyms,
+        antonyms: wordData.antonyms,
+        examples: examples,
+        frequencyScore: null,
+        partOfSpeech: wordData.meanings[0]?.partOfSpeech || 'unknown',
       };
 
       await databaseService.storeExternalWord(externalWordData);

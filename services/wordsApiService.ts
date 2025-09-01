@@ -1,4 +1,4 @@
-import { WordData } from '@/types';
+import { WordData, DefinitionMetadata, EnhancedMeaning } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
@@ -10,6 +10,7 @@ interface WordsApiDefinition {
   antonyms?: string[];
   derivation?: string[];
   examples?: string[];
+  metadata?: DefinitionMetadata;
 }
 
 interface WordsApiPronunciation {
@@ -548,23 +549,22 @@ export class WordsApiService {
       console.log('definition field:', (apiData as any).definition);
     }
     
-    // Group definitions by part of speech
-    let meanings: any[] = [];
+    // Extract ALL definitions with metadata
+    let meanings: EnhancedMeaning[] = [];
     
     if (definitions.length > 0) {
-      const meaningsByPOS = definitions.reduce((acc, def) => {
-        const pos = def.partOfSpeech || 'unknown';
-        if (!acc[pos]) {
-          acc[pos] = [];
+      meanings = definitions.map((def, index) => ({
+        partOfSpeech: def.partOfSpeech || 'unknown',
+        definition: def.definition,
+        example: def.examples?.[0],
+        source: 'wordsapi',
+        metadata: {
+          source: 'wordsapi',
+          definitionId: `${apiData.word}-api-${index}`,
+          originalIndex: index,
+          lastUpdated: new Date().toISOString()
         }
-        acc[pos].push({
-          partOfSpeech: pos,
-          definition: def.definition,
-          example: def.examples?.[0], // Take first example if available
-        });
-        return acc;
-      }, {} as { [key: string]: any[] });
-      meanings = Object.values(meaningsByPOS).flat().slice(0, 5);
+      }));
     } else {
       // Try alternative response structures
       const apiDataAny = apiData as any;
@@ -572,11 +572,18 @@ export class WordsApiService {
       // Check for 'results' field (common in WordsAPI)
       if (apiDataAny.results && Array.isArray(apiDataAny.results)) {
         console.log('Processing results field:', apiDataAny.results);
-        meanings = apiDataAny.results.map((result: any) => ({
+        meanings = apiDataAny.results.map((result: any, index: number) => ({
           partOfSpeech: result.partOfSpeech || 'unknown',
           definition: result.definition || result.meaning || 'No definition available',
           example: result.examples?.[0] || undefined,
-        })).slice(0, 5);
+          source: 'wordsapi',
+          metadata: {
+            source: 'wordsapi',
+            definitionId: `${apiData.word}-results-${index}`,
+            originalIndex: index,
+            lastUpdated: new Date().toISOString()
+          }
+        } as EnhancedMeaning));
       }
       // Check for single definition field
       else if (apiDataAny.definition) {
@@ -585,6 +592,13 @@ export class WordsApiService {
           partOfSpeech: 'unknown',
           definition: apiDataAny.definition,
           example: undefined,
+          source: 'wordsapi',
+          metadata: {
+            source: 'wordsapi',
+            definitionId: `${apiData.word}-single-0`,
+            originalIndex: 0,
+            lastUpdated: new Date().toISOString()
+          }
         }];
       }
       // Check for meaning field  
@@ -594,6 +608,13 @@ export class WordsApiService {
           partOfSpeech: 'unknown',
           definition: apiDataAny.meaning,
           example: undefined,
+          source: 'wordsapi',
+          metadata: {
+            source: 'wordsapi',
+            definitionId: `${apiData.word}-meaning-0`,
+            originalIndex: 0,
+            lastUpdated: new Date().toISOString()
+          }
         }];
       }
     }

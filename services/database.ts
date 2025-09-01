@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { StudySession, UserProgress, Word } from '../types';
+import { StudySession, UserProgress, Word, EnhancedMeaning } from '../types';
 import vocabularyData from './vocabulary.json';
 
 const DATABASE_NAME = 'vocabmaster.db';
@@ -11,6 +11,7 @@ class DatabaseService {
     try {
       this.db = await SQLite.openDatabaseAsync(DATABASE_NAME);
       await this.createTables();
+      await this.migrateExistingDefinitions();
       await this.seedInitialData();
     } catch (error) {
       console.error('Database initialization error:', error);
@@ -84,6 +85,7 @@ class DatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         word_id INTEGER NOT NULL,
         definition TEXT,
+        definitions_array TEXT, -- JSON array of multiple definitions with metadata
         pronunciation TEXT,
         example_sentence TEXT,
         etymology TEXT,
@@ -92,6 +94,7 @@ class DatabaseService {
         difficulty_score REAL,
         frequency_score REAL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (word_id) REFERENCES cefr_words (id)
       );
     `);
@@ -212,6 +215,7 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_cefr_words_level ON cefr_words(cefr_level);
       CREATE INDEX IF NOT EXISTS idx_cefr_words_word ON cefr_words(word);
       CREATE INDEX IF NOT EXISTS idx_word_details_word_id ON word_details(word_id);
+      CREATE INDEX IF NOT EXISTS idx_word_details_definitions_array ON word_details(definitions_array);
       CREATE INDEX IF NOT EXISTS idx_enriched_bookmarks_word_level ON enriched_bookmarks(word, cefr_level);
       CREATE INDEX IF NOT EXISTS idx_enriched_progress_word_level ON enriched_progress(word, cefr_level);
       CREATE INDEX IF NOT EXISTS idx_external_words_word ON external_words(word);
@@ -221,6 +225,93 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_api_usage_provider ON api_usage_tracking(api_provider);
       CREATE INDEX IF NOT EXISTS idx_user_api_settings_provider ON user_api_settings(api_provider);
     `);
+  }
+
+  private async migrateExistingDefinitions(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Check if migration is needed by looking for definitions_array column
+      const tableInfo = await this.db.getAllAsync("PRAGMA table_info(word_details)");
+      const hasDefinitionsArray = tableInfo.some((col: any) => col.name === 'definitions_array');
+      
+      if (!hasDefinitionsArray) {
+        console.log('Adding definitions_array column to word_details table...');
+        await this.db.execAsync(`
+          ALTER TABLE word_details ADD COLUMN definitions_array TEXT;
+        `);
+        await this.db.execAsync(`
+          ALTER TABLE word_details ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP;
+        `);
+      }
+
+      // Migrate existing single definitions to multiple definitions format
+      const existingRecords = await this.db.getAllAsync(`
+        SELECT id, definition, example_sentence, pronunciation 
+        FROM word_details 
+        WHERE definitions_array IS NULL AND definition IS NOT NULL
+      `);
+
+      for (const record of existingRecords as any[]) {
+        const definitionsArray = [{
+          definition: record.definition,
+          partOfSpeech: 'unknown',
+          example: record.example_sentence || undefined,
+          source: 'legacy',
+          metadata: {
+            migrated: true,
+            originalId: record.id
+          }
+        }];
+
+        await this.db.runAsync(`
+          UPDATE word_details 
+          SET definitions_array = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `, [JSON.stringify(definitionsArray), record.id]);
+      }
+
+      // Migrate external_words definitions to enhanced structure if needed
+      const externalWords = await this.db.getAllAsync(`
+        SELECT id, word, definitions 
+        FROM external_words 
+        WHERE definitions IS NOT NULL
+      `);
+
+      for (const word of externalWords as any[]) {
+        try {
+          const currentDefinitions = JSON.parse(word.definitions || '[]');
+          
+          // Check if already migrated (has metadata structure)
+          if (currentDefinitions.length > 0 && !currentDefinitions[0].metadata) {
+            const enhancedDefinitions = currentDefinitions.map((def: any, index: number) => ({
+              definition: def.definition || def,
+              partOfSpeech: def.partOfSpeech || 'unknown',
+              example: def.example || undefined,
+              source: 'wordsapi',
+              metadata: {
+                migrated: true,
+                originalIndex: index,
+                definitionId: `${word.word}-${index}`
+              }
+            }));
+
+            await this.db.runAsync(`
+              UPDATE external_words 
+              SET definitions = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `, [JSON.stringify(enhancedDefinitions), word.id]);
+          }
+        } catch (parseError) {
+          console.warn(`Failed to migrate definitions for word ${word.word}:`, parseError);
+        }
+      }
+
+      console.log(`Migrated ${existingRecords.length} word_details and ${externalWords.length} external_words definitions`);
+    } catch (error) {
+      console.error('Migration error:', error);
+      throw error;
+    }
   }
 
   private async seedInitialData(): Promise<void> {
@@ -511,6 +602,7 @@ class DatabaseService {
   // Word Details operations
   async addWordDetails(wordId: number, details: {
     definition?: string;
+    definitions?: EnhancedMeaning[];
     pronunciation?: string;
     example_sentence?: string;
     etymology?: string;
@@ -521,13 +613,34 @@ class DatabaseService {
   }): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     
+    // Convert single definition to multiple definitions format for backward compatibility
+    let definitionsArray: EnhancedMeaning[] = [];
+    
+    if (details.definitions && details.definitions.length > 0) {
+      definitionsArray = details.definitions;
+    } else if (details.definition) {
+      definitionsArray = [{
+        partOfSpeech: 'unknown',
+        definition: details.definition,
+        example: details.example_sentence,
+        source: 'legacy',
+        metadata: {
+          source: 'legacy',
+          definitionId: `legacy-${wordId}-0`,
+          originalIndex: 0,
+          lastUpdated: new Date().toISOString()
+        }
+      }];
+    }
+    
     await this.db.runAsync(`
       INSERT OR REPLACE INTO word_details 
-      (word_id, definition, pronunciation, example_sentence, etymology, synonyms, antonyms, difficulty_score, frequency_score)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (word_id, definition, definitions_array, pronunciation, example_sentence, etymology, synonyms, antonyms, difficulty_score, frequency_score, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `, [
       wordId,
-      details.definition || null,
+      details.definition || (definitionsArray.length > 0 ? definitionsArray[0].definition : null), // Backward compatibility
+      JSON.stringify(definitionsArray),
       details.pronunciation || null,
       details.example_sentence || null,
       details.etymology || null,
@@ -536,6 +649,63 @@ class DatabaseService {
       details.difficulty_score || null,
       details.frequency_score || null
     ]);
+  }
+
+  // Backward compatibility methods for single definition access
+  async getWordDetailsWithDefinitions(wordId: number): Promise<{
+    id: number;
+    definition: string;
+    definitions: EnhancedMeaning[];
+    pronunciation?: string;
+    example_sentence?: string;
+    etymology?: string;
+    synonyms?: string;
+    antonyms?: string;
+  } | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const result = await this.db.getFirstAsync(`
+      SELECT * FROM word_details WHERE word_id = ?
+    `, [wordId]) as any;
+    
+    if (!result) return null;
+    
+    let definitions: EnhancedMeaning[] = [];
+    
+    if (result.definitions_array) {
+      try {
+        definitions = JSON.parse(result.definitions_array);
+      } catch (error) {
+        console.warn('Failed to parse definitions_array:', error);
+      }
+    }
+    
+    // Fallback to single definition if no definitions array
+    if (definitions.length === 0 && result.definition) {
+      definitions = [{
+        partOfSpeech: 'unknown',
+        definition: result.definition,
+        example: result.example_sentence,
+        source: 'legacy',
+        metadata: {
+          source: 'legacy',
+          definitionId: `legacy-fallback-${wordId}`,
+          originalIndex: 0,
+          lastUpdated: new Date().toISOString()
+        }
+      }];
+    }
+    
+    return {
+      id: result.id,
+      definition: result.definition || (definitions.length > 0 ? definitions[0].definition : ''),
+      definitions,
+      pronunciation: result.pronunciation,
+      example_sentence: result.example_sentence,
+      etymology: result.etymology,
+      synonyms: result.synonyms,
+      antonyms: result.antonyms
+    };
   }
 
   async getCefrLevelStats(): Promise<{[level: string]: number}> {
