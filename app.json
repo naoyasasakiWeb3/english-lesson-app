@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.naoyasasaki.englishlesson",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "associatedDomains": [
         "applinks:englishlesson.naoyasasaki.com",
         "applinks:englishlesson.naoyasasaki.com"
