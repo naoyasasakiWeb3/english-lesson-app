@@ -106,6 +106,15 @@ export default function ReviewSection() {
         databaseService.getEnrichedBookmarkedWords(),
         databaseService.getEnrichedWeakWords()
       ]);
+      
+      console.log('Loaded enriched weak words:', enrichedWeak.map(w => ({
+        word: w.word,
+        cefr_level: w.cefr_level,
+        attempts: w.attempts,
+        correct_attempts: w.correct_attempts,
+        accuracy: w.attempts > 0 ? w.correct_attempts / w.attempts : 0
+      })));
+      
       setBookmarkedWords(bookmarked);
       setWeakWords(weak);
       setEnrichedBookmarkedWords(enrichedBookmarked);
@@ -356,6 +365,29 @@ export default function ReviewSection() {
         console.log('Final definition text:', definitionText);
         console.log('Final part of speech:', partOfSpeech);
 
+        // EXTERNAL単語のaccuracy情報を取得（全ソース対応）
+        let accuracy = 0;
+        
+        // 1. enrichedWeakWordsから検索（どのソースからでも）
+        const weakWordData = enrichedWeakWords.find(w => w.word === word && w.cefr_level === 'EXTERNAL');
+        if (weakWordData && weakWordData.attempts > 0) {
+          accuracy = weakWordData.attempts > 0 ? weakWordData.correct_attempts / weakWordData.attempts : 0;
+          console.log(`Found accuracy for EXTERNAL word ${word} from enrichedWeakWords: ${accuracy}`);
+        }
+        
+        // 2. データベースから直接取得
+        if (accuracy === 0) {
+          try {
+            const progressData = await databaseService.getEnrichedWordProgress(word, 'EXTERNAL');
+            if (progressData && progressData.attempts > 0) {
+              accuracy = progressData.correct_attempts / progressData.attempts;
+              console.log(`Found accuracy for EXTERNAL word ${word} from database: ${accuracy}`);
+            }
+          } catch (error) {
+            console.warn('Failed to get progress from database for EXTERNAL word:', error);
+          }
+        }
+
         const detailDataObj = {
           type: 'enriched' as const,
           word,
@@ -368,6 +400,7 @@ export default function ReviewSection() {
           pos: partOfSpeech,
           source: source || 'bookmarked',
           isBookmarked: isBm,
+          accuracy: accuracy, // accuracy情報を追加
         };
         
         console.log('Setting detail data for EXTERNAL word:', JSON.stringify(detailDataObj, null, 2));
@@ -379,6 +412,48 @@ export default function ReviewSection() {
       const data = await enrichedVocabularyService.getEnrichedVocabulary(cefr);
       const found = data.vocabulary.find(v => v.word.toLowerCase() === word.toLowerCase());
       const isBm = await databaseService.isEnrichedWordBookmarked(word, cefr);
+      
+      // CEFR単語のaccuracy情報を取得（優先順位順）
+      let accuracy = 0;
+      
+      // 1. Challenging wordsから開かれた場合、enrichedWeakWordsからaccuracy情報を取得
+      if (source === 'challenging') {
+        const weakWordData = enrichedWeakWords.find(w => w.word === word && w.cefr_level === cefr);
+        if (weakWordData) {
+          accuracy = weakWordData.attempts > 0 ? weakWordData.correct_attempts / weakWordData.attempts : 0;
+          console.log(`Found accuracy for CEFR word ${word} (${cefr}) from challenging: ${accuracy}`);
+        }
+      }
+      
+      // 2. stats情報がある場合はそれを使用
+      if (accuracy === 0 && stats && stats.attempts && stats.correctAttempts !== undefined && stats.attempts > 0) {
+        accuracy = stats.correctAttempts / stats.attempts;
+        console.log(`Found accuracy from stats for CEFR word ${word}: ${accuracy}`);
+      }
+      
+      // 3. どこからでもaccuracy情報を取得できるように、enrichedWeakWordsを全体検索
+      if (accuracy === 0) {
+        // enrichedWeakWordsから検索（challenging以外でも）
+        const weakWordData = enrichedWeakWords.find(w => w.word === word && w.cefr_level === cefr);
+        if (weakWordData && weakWordData.attempts > 0) {
+          accuracy = weakWordData.correct_attempts / weakWordData.attempts;
+          console.log(`Found accuracy for CEFR word ${word} (${cefr}) from enrichedWeakWords: ${accuracy}`);
+        }
+      }
+      
+      // 4. 最後の手段：データベースから直接取得
+      if (accuracy === 0) {
+        try {
+          const progressData = await databaseService.getEnrichedWordProgress(word, cefr);
+          if (progressData && progressData.attempts > 0) {
+            accuracy = progressData.correct_attempts / progressData.attempts;
+            console.log(`Found accuracy for CEFR word ${word} (${cefr}) from database: ${accuracy}`);
+          }
+        } catch (error) {
+          console.warn('Failed to get progress from database:', error);
+        }
+      }
+      
       setDetailData({
         type: 'enriched',
         word,
@@ -394,7 +469,8 @@ export default function ReviewSection() {
         masteryLevel: stats?.masteryLevel,
         isBookmarked: isBm,
         source,
-      });
+        accuracy: accuracy, // accuracy情報を追加
+      } as any);
       setDetailVisible(true);
     } catch {
       Alert.alert('Error', 'Failed to load word details');
@@ -794,6 +870,13 @@ export default function ReviewSection() {
                       </ThemedText>
                     </View>
                     {detailData.pos ? (<View style={styles.sourceBadge}><ThemedText style={styles.sourceText}>{detailData.pos}</ThemedText></View>) : null}
+                    {'accuracy' in detailData && detailData.accuracy !== undefined && typeof detailData.accuracy === 'number' ? (
+                      <View style={styles.accuracyBadgeDetail}>
+                        <ThemedText style={styles.accuracyTextDetail}>
+                          {Math.round(detailData.accuracy * 100)}% accuracy
+                        </ThemedText>
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
                 {detailData.definition ? (
@@ -933,9 +1016,109 @@ export default function ReviewSection() {
                 }
                 return (
                   <View style={styles.listItemsWrapper}>
-                    {words.map((w, idx) => (
-                      <ThemedText key={`${listType}-w-${idx}`} style={styles.listItem}>• {w}</ThemedText>
-                    ))}
+                    {listType === 'bookmarked' ? (
+                      // Bookmarked Words表示（既存ロジック）
+                      words.map((w, idx) => (
+                        <Pressable 
+                          key={`${listType}-w-${idx}`} 
+                          style={styles.listItemPressable}
+                          onPress={() => {
+                            // ブックマーク単語の詳細表示ロジック
+                            const legacyWord = bookmarkedWords.find(bw => bw.word === w);
+                            const enrichedWord = enrichedBookmarkedWords.find(ew => ew.word === w);
+                            
+                            if (enrichedWord) {
+                              openEnrichedDetail(w, enrichedWord.cefr_level, undefined, 'bookmarked');
+                            } else if (legacyWord) {
+                              setDetailData({
+                                type: 'legacy',
+                                word: legacyWord.word,
+                                definition: legacyWord.definition,
+                                pronunciation: legacyWord.pronunciation,
+                                difficulty: legacyWord.difficulty
+                              });
+                              setDetailVisible(true);
+                            }
+                            setListVisible(false);
+                          }}
+                        >
+                          <ThemedText style={styles.listItem}>• {w}</ThemedText>
+                        </Pressable>
+                      ))
+                    ) : (
+                      // Challenging Words表示（拡張版）
+                      (() => {
+                        const challengingItems = [
+                          ...weakWords.map(w => ({ 
+                            word: w.word, 
+                            type: 'legacy' as const,
+                            accuracy: 0, // Legacy words accuracy calculation needed
+                            category: w.category || 'Unknown'
+                          })),
+                          ...enrichedWeakWords.map(w => {
+                            const accuracy = w.attempts > 0 ? w.correct_attempts / w.attempts : 0;
+                            console.log(`Challenging word ${w.word} (${w.cefr_level}): ${w.correct_attempts}/${w.attempts} = ${accuracy}`);
+                            return {
+                              word: w.word, 
+                              type: 'enriched' as const,
+                              cefr_level: w.cefr_level,
+                              accuracy: accuracy,
+                              category: w.cefr_level
+                            };
+                          })
+                        ];
+                        
+                        return challengingItems.map((item, idx) => {
+                          console.log(`Rendering challenging item ${idx}: ${item.word}, accuracy: ${item.accuracy}, type: ${item.type}`);
+                          return (
+                            <Pressable 
+                              key={`challenging-${idx}`} 
+                              style={styles.challengingWordItem}
+                              onPress={() => {
+                                if (item.type === 'enriched' && 'cefr_level' in item) {
+                                  openEnrichedDetail(item.word, item.cefr_level, undefined, 'challenging');
+                                } else {
+                                  const legacyWord = weakWords.find(w => w.word === item.word);
+                                  if (legacyWord) {
+                                    setDetailData({
+                                      type: 'legacy',
+                                      word: legacyWord.word,
+                                      definition: legacyWord.definition,
+                                      pronunciation: legacyWord.pronunciation,
+                                      difficulty: legacyWord.difficulty
+                                    });
+                                    setDetailVisible(true);
+                                  }
+                                }
+                                setListVisible(false);
+                              }}
+                            >
+                              <View style={styles.challengingWordContent}>
+                                <View style={styles.challengingWordHeader}>
+                                  <ThemedText style={styles.challengingWordText}>{item.word}</ThemedText>
+                                  <View style={styles.challengingWordBadges}>
+                                    <View style={styles.accuracyBadgeSmall}>
+                                      <ThemedText style={styles.accuracyTextSmall}>
+                                        {(() => {
+                                          const percentage = Math.round(item.accuracy * 100);
+                                          console.log(`Displaying accuracy for ${item.word}: ${item.accuracy} -> ${percentage}%`);
+                                          return `${percentage}%`;
+                                        })()}
+                                      </ThemedText>
+                                    </View>
+                                    <View style={item.type === 'enriched' && 'cefr_level' in item && item.cefr_level === 'EXTERNAL' ? styles.apiBadgeSmall : styles.categoryBadgeSmall}>
+                                      <ThemedText style={item.type === 'enriched' && 'cefr_level' in item && item.cefr_level === 'EXTERNAL' ? styles.apiTextSmall : styles.categoryTextSmall}>
+                                        {item.type === 'enriched' && 'cefr_level' in item && item.cefr_level === 'EXTERNAL' ? 'API' : item.category}
+                                      </ThemedText>
+                                    </View>
+                                  </View>
+                                </View>
+                              </View>
+                            </Pressable>
+                          );
+                        });
+                      })()
+                    )}
                   </View>
                 );
               })()}
@@ -1211,5 +1394,130 @@ const styles = StyleSheet.create({
   apiSearchButton: {
     marginTop: Spacing.xs,
     width: '100%',
+  },
+  listItemPressable: {
+    marginBottom: Spacing.xs,
+  },
+  challengingWordItem: {
+    marginBottom: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  challengingWordContent: {
+    flexDirection: 'column',
+    gap: Spacing.xs,
+  },
+  challengingWordText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  challengingWordMeta: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  accuracyBadge: {
+    backgroundColor: 'rgba(255,87,87,0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,87,87,0.5)',
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  accuracyText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  categoryBadge: {
+    backgroundColor: 'rgba(66,165,245,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(66,165,245,0.3)',
+  },
+  categoryText: {
+    color: '#42a5f5',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // 新しいスタイル: 単語の横に配置される小さなバッジ
+  challengingWordHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  challengingWordBadges: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    alignItems: 'center',
+  },
+  accuracyBadgeSmall: {
+    backgroundColor: 'rgba(255,87,87,0.3)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,87,87,0.5)',
+    minWidth: 35,
+    alignItems: 'center',
+  },
+  accuracyTextSmall: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  categoryBadgeSmall: {
+    backgroundColor: 'rgba(66,165,245,0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(66,165,245,0.3)',
+    minWidth: 35,
+    alignItems: 'center',
+  },
+  categoryTextSmall: {
+    color: '#42a5f5',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  apiBadgeSmall: {
+    backgroundColor: 'rgba(255,165,0,0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,165,0,0.4)',
+    minWidth: 35,
+    alignItems: 'center',
+  },
+  apiTextSmall: {
+    color: '#ffa500',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  // 詳細モーダル用のaccuracyバッジ
+  accuracyBadgeDetail: {
+    backgroundColor: 'rgba(255,87,87,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,87,87,0.3)',
+  },
+  accuracyTextDetail: {
+    color: '#ff5757',
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

@@ -214,13 +214,23 @@ export default function QuizComponent() {
     try {
       console.log(`Bookmark attempt - Question ID: ${currentQuestion.id}, Word: ${currentQuestion.word}, CEFR: ${currentQuestion.cefrLevel}, Difficulty: ${currentQuestion.difficulty}`);
       
-      // CEFRレベルが設定されている、またはIDがenriched形式の場合はenriched word
-      const isEnrichedWord = currentQuestion.cefrLevel || currentQuestion.id.startsWith('enriched-');
+      // CEFRレベルが設定されている、またはIDがenriched形式・external形式の場合はenriched word
+      const isEnrichedWord = currentQuestion.cefrLevel || 
+                            currentQuestion.id.startsWith('enriched-') || 
+                            currentQuestion.id.startsWith('external_');
       
       if (isEnrichedWord) {
         // Enriched vocabulary system
         const word = currentQuestion.word;
-        const cefrLevel = currentQuestion.cefrLevel || mapDifficultyToCefr(currentQuestion.difficulty);
+        let cefrLevel = currentQuestion.cefrLevel;
+        
+        // EXTERNAL単語の場合
+        if (currentQuestion.id.startsWith('external_')) {
+          cefrLevel = 'EXTERNAL';
+        } else if (!cefrLevel) {
+          // 通常のenriched wordでCEFRレベルが不明な場合はdifficultyから逆算
+          cefrLevel = mapDifficultyToCefr(currentQuestion.difficulty);
+        }
         console.log(`Bookmarking enriched word: ${word} (${cefrLevel})`);
         await bookmarkEnrichedWord(word, cefrLevel);
       } else {

@@ -788,6 +788,23 @@ class DatabaseService {
     }
   }
 
+  async getEnrichedWordProgress(word: string, cefrLevel: string): Promise<{attempts: number; correct_attempts: number; mastery_level: number} | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    try {
+      const result = await this.db.getFirstAsync(`
+        SELECT attempts, correct_attempts, mastery_level
+        FROM enriched_progress 
+        WHERE word = ? AND cefr_level = ?
+      `, [word, cefrLevel]) as any;
+      
+      return result || null;
+    } catch (error) {
+      console.error('Error getting enriched word progress:', error);
+      return null;
+    }
+  }
+
   async removeEnrichedWeakWord(word: string, cefrLevel: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     try {

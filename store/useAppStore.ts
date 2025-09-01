@@ -609,14 +609,24 @@ export const useAppStore = create<AppStore>()(
         const currentQuestion = currentSession.questions[currentSession.currentIndex];
         const isCorrect = answer === currentQuestion.correctAnswer;
         
-        // CEFRレベルが設定されている、またはIDがenriched形式の場合はenriched word
-        const isEnrichedWord = currentQuestion.cefrLevel || questionId.startsWith('enriched-');
+        // CEFRレベルが設定されている、またはIDがenriched形式・external形式の場合はenriched word
+        const isEnrichedWord = currentQuestion.cefrLevel || 
+                              questionId.startsWith('enriched-') || 
+                              questionId.startsWith('external_');
         
         if (isEnrichedWord && currentQuestion.word) {
           // 新しいenriched vocabulary systemの場合
           const word = currentQuestion.word;
-          // CEFRレベル情報を直接取得、なければdifficultyから逆算
-          const cefrLevel = currentQuestion.cefrLevel || mapDifficultyToCefr(currentQuestion.difficulty);
+          // CEFRレベル情報を直接取得
+          let cefrLevel = currentQuestion.cefrLevel;
+          
+          // EXTERNAL単語の場合
+          if (questionId.startsWith('external_')) {
+            cefrLevel = 'EXTERNAL';
+          } else if (!cefrLevel) {
+            // 通常のenriched wordでCEFRレベルが不明な場合はdifficultyから逆算
+            cefrLevel = mapDifficultyToCefr(currentQuestion.difficulty);
+          }
           
           console.log(`Updating enriched word progress: ${word} (${cefrLevel}) - ${isCorrect ? 'correct' : 'incorrect'}`);
           
