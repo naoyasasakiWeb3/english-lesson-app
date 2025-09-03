@@ -25,6 +25,8 @@ export interface WordData {
     partOfSpeech: string;
     definition: string;
     example?: string;
+    synonyms?: string[];
+    examples?: string[];
   }[];
   pronunciation: {
     phonetic: string;

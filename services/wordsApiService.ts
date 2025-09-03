@@ -561,6 +561,8 @@ export class WordsApiService {
           partOfSpeech: pos,
           definition: def.definition,
           example: def.examples?.[0], // Take first example if available
+          synonyms: def.synonyms,
+          examples: def.examples,
         });
         return acc;
       }, {} as { [key: string]: any[] });
@@ -576,6 +578,8 @@ export class WordsApiService {
           partOfSpeech: result.partOfSpeech || 'unknown',
           definition: result.definition || result.meaning || 'No definition available',
           example: result.examples?.[0] || undefined,
+          synonyms: result.synonyms,
+          examples: result.examples,
         })).slice(0, 5);
       }
       // Check for single definition field
@@ -585,6 +589,8 @@ export class WordsApiService {
           partOfSpeech: 'unknown',
           definition: apiDataAny.definition,
           example: undefined,
+          synonyms: apiDataAny.synonyms,
+          examples: apiDataAny.examples,
         }];
       }
       // Check for meaning field  
@@ -594,6 +600,8 @@ export class WordsApiService {
           partOfSpeech: 'unknown',
           definition: apiDataAny.meaning,
           example: undefined,
+          synonyms: apiDataAny.synonyms,
+          examples: apiDataAny.examples,
         }];
       }
     }

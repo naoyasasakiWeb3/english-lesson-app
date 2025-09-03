@@ -43,6 +43,7 @@ export default function ReviewSection() {
         type: 'enriched';
         word: string;
         cefr: string;
+        meanings?: { definition: string; example?: string; partOfSpeech?: string; synonyms?: string[]; examples?: string[] }[];
         definition?: string;
         pronunciation?: string;
         example?: string;
@@ -54,9 +55,11 @@ export default function ReviewSection() {
         masteryLevel?: number;
         isBookmarked?: boolean;
         source?: 'search' | 'bookmarked' | 'challenging';
+        accuracy?: number;
       }
     | null
   >(null);
+  const [meaningIndex, setMeaningIndex] = useState(0);
   const [enrichedDefinitionMap, setEnrichedDefinitionMap] = useState<Record<string, string>>({});
   const [bookmarkedPage, setBookmarkedPage] = useState(0);
   const [challengingPage, setChallengingPage] = useState(0);
@@ -245,6 +248,13 @@ export default function ReviewSection() {
           type: 'enriched',
           word: wordData.word,
           cefr: 'EXTERNAL', // 外部APIからの結果であることを示す
+          meanings: (wordData.meanings || []).map(m => ({
+            definition: m.definition,
+            example: m.example,
+            partOfSpeech: m.partOfSpeech,
+            synonyms: m.synonyms,
+            examples: m.examples,
+          })),
           definition: wordData.meanings[0]?.definition || 'No definition available',
           pronunciation: wordData.pronunciation.phonetic,
           example: wordData.meanings[0]?.example,
@@ -254,6 +264,7 @@ export default function ReviewSection() {
           source: 'search',
           isBookmarked: isBookmarked,
         });
+        setMeaningIndex(0);
         setDetailVisible(true);
       } else {
         Alert.alert(
@@ -388,10 +399,20 @@ export default function ReviewSection() {
           }
         }
 
+        const meaningsFromExternal = (definitions || []).map((d: any) => ({
+          definition:
+            d?.definition ?? d?.meaning ?? d?.text ?? (typeof d === 'string' ? d : ''),
+          example: d?.example ?? (Array.isArray(d?.examples) ? d.examples[0] : undefined),
+          partOfSpeech: d?.partOfSpeech ?? d?.part_of_speech ?? d?.pos,
+          synonyms: d?.synonyms,
+          examples: d?.examples,
+        }));
+
         const detailDataObj = {
           type: 'enriched' as const,
           word,
           cefr: 'EXTERNAL',
+          meanings: meaningsFromExternal,
           definition: definitionText,
           pronunciation: externalWord?.phonetic || '',
           example: examples.length > 0 ? examples[0] : undefined,
@@ -405,6 +426,7 @@ export default function ReviewSection() {
         
         console.log('Setting detail data for EXTERNAL word:', JSON.stringify(detailDataObj, null, 2));
         setDetailData(detailDataObj);
+        setMeaningIndex(0);
         setDetailVisible(true);
         return;
       }
@@ -454,10 +476,20 @@ export default function ReviewSection() {
         }
       }
       
+      const meaningsFromCefr = (found?.apiData?.definitions || []).map((d: any) => ({
+        definition:
+          d?.definition ?? d?.meaning ?? d?.text ?? (typeof d === 'string' ? d : ''),
+        example: d?.example ?? (Array.isArray(d?.examples) ? d.examples[0] : undefined),
+        partOfSpeech: d?.partOfSpeech ?? d?.part_of_speech ?? d?.pos ?? found?.pos,
+        synonyms: d?.synonyms,
+        examples: d?.examples,
+      }));
+
       setDetailData({
         type: 'enriched',
         word,
         cefr,
+        meanings: meaningsFromCefr,
         definition: found?.apiData?.definitions && found.apiData.definitions.length > 0 ? found.apiData.definitions[0].definition : undefined,
         pronunciation: found?.apiData?.pronunciation?.all,
         example: found?.apiData?.examples && found.apiData.examples.length > 0 ? found.apiData.examples[0] : undefined,
@@ -471,6 +503,7 @@ export default function ReviewSection() {
         source,
         accuracy: accuracy, // accuracy情報を追加
       } as any);
+      setMeaningIndex(0);
       setDetailVisible(true);
     } catch {
       Alert.alert('Error', 'Failed to load word details');
@@ -879,42 +912,126 @@ export default function ReviewSection() {
                     ) : null}
                   </View>
                 ) : null}
-                {detailData.definition ? (
-                  <View style={styles.detailBlock}>
-                    <ThemedText style={styles.detailLabel}>Meaning</ThemedText>
-                    <ThemedText style={styles.detailText}>{detailData.definition}</ThemedText>
+
+                {/* Show tabs if multiple meanings exist */}
+                {'meanings' in detailData && detailData.meanings && detailData.meanings.length > 0 ? (
+                  <View style={{ marginBottom: Spacing.md }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {detailData.meanings.map((m, idx) => (
+                          <Pressable key={`m-${idx}`} onPress={() => {
+                            console.log(`Tab clicked: ${idx}, current meaningIndex: ${meaningIndex}`);
+                            console.log(`Selected meaning synonyms:`, m.synonyms);
+                            setMeaningIndex(idx);
+                          }}>
+                            <View style={[styles.tabPill, meaningIndex === idx ? styles.tabPillActive : styles.tabPillInactive]}>
+                              <ThemedText style={meaningIndex === idx ? styles.tabPillTextActive : styles.tabPillTextInactive}>
+                                {m.partOfSpeech || `Def ${idx + 1}`}
+                              </ThemedText>
+                            </View>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </ScrollView>
                   </View>
                 ) : null}
+
+                {/* Unified Word Details - Always show 4 items: Definition, Synonyms, Example, Pronunciation */}
+                {/* Definition */}
+                <View style={styles.detailBlock}>
+                  <ThemedText style={styles.detailLabel}>Definition</ThemedText>
+                  <ThemedText style={styles.detailText}>
+                    {(() => {
+                      const hasMultipleMeanings = 'meanings' in detailData && detailData.meanings && detailData.meanings.length > 0;
+                      const currentDefinition = hasMultipleMeanings && detailData.meanings ? detailData.meanings[meaningIndex]?.definition : null;
+                      const globalDefinition = detailData.definition;
+
+                      console.log('Definition debug:', {
+                        hasMultipleMeanings,
+                        meaningIndex,
+                        currentDefinition,
+                        globalDefinition
+                      });
+
+                      if (hasMultipleMeanings && detailData.meanings) {
+                        return currentDefinition || globalDefinition || 'No definition available';
+                      } else {
+                        return globalDefinition || 'No definition available';
+                      }
+                    })()}
+                  </ThemedText>
+                </View>
+
+                {/* Synonyms */}
+                <View style={styles.detailBlock}>
+                  <ThemedText style={styles.detailLabel}>Synonyms</ThemedText>
+                  <ThemedText style={styles.detailText}>
+                    {(() => {
+                      const hasMultipleMeanings = 'meanings' in detailData && detailData.meanings && detailData.meanings.length > 0;
+                      const currentMeaningSynonyms = hasMultipleMeanings && detailData.meanings ? detailData.meanings[meaningIndex]?.synonyms : null;
+                      const globalSynonyms = detailData.type === 'enriched' && 'synonyms' in detailData ? detailData.synonyms : null;
+
+                      console.log('Synonyms debug:', {
+                        hasMultipleMeanings,
+                        meaningIndex,
+                        currentMeaningSynonyms,
+                        globalSynonyms,
+                        currentMeaningSynonymsLength: currentMeaningSynonyms?.length,
+                        globalSynonymsLength: globalSynonyms?.length
+                      });
+
+                      if (hasMultipleMeanings && detailData.meanings) {
+                        if (currentMeaningSynonyms && currentMeaningSynonyms.length > 0) {
+                          return currentMeaningSynonyms.join(', ');
+                        } else if (globalSynonyms && globalSynonyms.length > 0) {
+                          return globalSynonyms.join(', ');
+                        } else {
+                          return 'No synonyms available';
+                        }
+                      } else {
+                        if (globalSynonyms && globalSynonyms.length > 0) {
+                          return globalSynonyms.join(', ');
+                        } else {
+                          return 'No synonyms available';
+                        }
+                      }
+                    })()}
+                  </ThemedText>
+                </View>
+
+                {/* Example */}
+                <View style={styles.detailBlock}>
+                  <ThemedText style={styles.detailLabel}>Example</ThemedText>
+                  <ThemedText style={styles.detailText}>
+                    {'meanings' in detailData && detailData.meanings && detailData.meanings.length > 0
+                      ? (detailData.meanings[meaningIndex]?.examples && detailData.meanings[meaningIndex]?.examples.length > 0)
+                        ? detailData.meanings[meaningIndex]?.examples[0]
+                        : (detailData.meanings[meaningIndex]?.example)
+                          ? detailData.meanings[meaningIndex]?.example
+                          : (detailData.type === 'enriched' && 'example' in detailData && detailData.example)
+                            ? detailData.example
+                            : 'No example available'
+                      : (detailData.type === 'enriched' && 'example' in detailData && detailData.example)
+                        ? detailData.example
+                        : 'No example available'
+                    }
+                  </ThemedText>
+                </View>
+
+                {/* Pronunciation */}
+                {detailData.pronunciation ? (
+                  <View style={styles.detailBlock}>
+                    <ThemedText style={styles.detailLabel}>Pronunciation</ThemedText>
+                    <ThemedText style={styles.detailText}>{detailData.pronunciation}</ThemedText>
+                  </View>
+                ) : null}
+                {/* Show Accuracy separately if available */}
                 {'attempts' in detailData && (detailData.attempts ?? 0) > 0 ? (
                   <View style={styles.detailBlock}>
                     <ThemedText style={styles.detailLabel}>Accuracy</ThemedText>
                     <ThemedText style={styles.detailText}>
                       {Math.round(((detailData.correctAttempts ?? 0) / (detailData.attempts ?? 1)) * 100)}% ({detailData.correctAttempts ?? 0}/{detailData.attempts ?? 0})
                     </ThemedText>
-                  </View>
-                ) : null}
-                {'example' in detailData && detailData.example ? (
-                  <View style={styles.detailBlock}>
-                    <ThemedText style={styles.detailLabel}>Example</ThemedText>
-                    <ThemedText style={styles.detailText}>{detailData.example}</ThemedText>
-                  </View>
-                ) : null}
-                {'synonyms' in detailData && detailData.synonyms && detailData.synonyms.length > 0 ? (
-                  <View style={styles.detailBlock}>
-                    <ThemedText style={styles.detailLabel}>Synonyms</ThemedText>
-                    <ThemedText style={styles.detailText}>{detailData.synonyms.join(', ')}</ThemedText>
-                  </View>
-                ) : null}
-                {'antonyms' in detailData && detailData.antonyms && detailData.antonyms.length > 0 ? (
-                  <View style={styles.detailBlock}>
-                    <ThemedText style={styles.detailLabel}>Antonyms</ThemedText>
-                    <ThemedText style={styles.detailText}>{detailData.antonyms.join(', ')}</ThemedText>
-                  </View>
-                ) : null}
-                {detailData.pronunciation ? (
-                  <View style={styles.detailBlock}>
-                    <ThemedText style={styles.detailLabel}>Pronunciation</ThemedText>
-                    <ThemedText style={styles.detailText}>{detailData.pronunciation}</ThemedText>
                   </View>
                 ) : null}
 
@@ -1315,6 +1432,30 @@ const styles = StyleSheet.create({
   },
   detailRemoveButton: {
     marginTop: Spacing.md,
+  },
+  tabPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  tabPillActive: {
+    backgroundColor: 'rgba(66,165,245,0.2)',
+    borderColor: 'rgba(66,165,245,0.5)',
+  },
+  tabPillInactive: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  tabPillTextActive: {
+    color: '#42a5f5',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  tabPillTextInactive: {
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '600',
+    fontSize: 12,
   },
   listScroll: {
     maxHeight: '100%',
